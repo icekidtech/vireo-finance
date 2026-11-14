@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, Length, Matches } from 'class-validator';
+import { IsDateString, IsEmail, IsEnum, IsOptional, IsString, Length, Matches } from 'class-validator';
 import { DevicePlatform, SignatureAlgorithm } from '../../common/enums';
 
 const PHONE_PATTERN = /^\+?[0-9]{10,15}$/;
@@ -17,6 +17,14 @@ export class RegisterDto {
   @IsString()
   @Matches(HANDLE_PATTERN, { message: 'handle must be 3-20 letters, numbers or underscores' })
   handle?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'dateOfBirth must be a valid ISO date string (YYYY-MM-DD)' })
+  dateOfBirth?: string;
 }
 
 export class OtpRequestDto {

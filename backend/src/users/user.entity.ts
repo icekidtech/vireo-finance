@@ -24,6 +24,12 @@ export class User {
   @Column({ type: 'varchar', length: 120 })
   name: string;
 
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  email: string | null;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  dateOfBirth: string | null;
+
   @Column({ type: 'smallint', default: 0 })
   kycTier: number;
 

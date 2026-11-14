@@ -68,3 +68,38 @@ export interface PaymentRequestResult {
   paymentMethods: unknown[];
   raw: Record<string, unknown>;
 }
+
+export interface RegisterCustomerInput {
+  referenceNumber: string;
+  customerFirstName: string;
+  customerLastName: string;
+  customerPhoneNumber: string;
+  customerEmail?: string;
+  customerDateOfBirth?: string; // YYYY-MM-DD
+}
+
+export interface RegisterCustomerResult {
+  responseCode: string;
+  message: string;
+  referenceNumber: string;
+  raw: Record<string, unknown>;
+}
+
+export type PagaIdType = 'PASSPORT' | 'NATIONAL_ID' | 'VOTERS_CARD' | 'DRIVER_LICENSE';
+
+export interface RegisterCustomerIdentificationInput {
+  referenceNumber: string;
+  customerPhoneNumber: string;
+  customerIdType: PagaIdType;
+  customerIdNumber?: string;
+  customerIdExpirationDate?: string; // YYYY-MM-DD
+  customerIdPhoto?: string; // base64 string or image reference
+}
+
+export interface RegisterCustomerIdentificationResult {
+  responseCode: string;
+  message: string;
+  referenceNumber: string;
+  raw: Record<string, unknown>;
+}
+

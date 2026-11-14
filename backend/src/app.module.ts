@@ -8,6 +8,7 @@ import { AgentModule } from './agent/agent.module';
 import { AuthModule } from './auth/auth.module';
 import { ChallengesModule } from './challenges/challenges.module';
 import { HealthModule } from './health/health.module';
+import { KycModule } from './kyc/kyc.module';
 import { LedgerModule } from './ledger/ledger.module';
 import { MerchantModule } from './merchant/merchant.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -26,6 +27,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     DatabaseModule,
     HealthModule,
     AuthModule,
+    KycModule,
     AccountsModule,
     LedgerModule,
     ChallengesModule,

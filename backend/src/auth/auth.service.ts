@@ -49,12 +49,28 @@ export class AuthService {
           phone,
           name: dto.name.trim(),
           handle: dto.handle?.toLowerCase() ?? null,
+          email: dto.email?.trim().toLowerCase() ?? null,
+          dateOfBirth: dto.dateOfBirth?.trim() ?? null,
           kycTier: 0,
         }),
       );
       const account = await this.accounts.createWallet(savedUser.id, manager);
       return { user: savedUser, walletId: account.id };
     });
+
+    const nameParts = splitFullName(user.name);
+    try {
+      await this.paga.registerCustomer({
+        referenceNumber: `reg_${user.id}`,
+        customerFirstName: nameParts.firstName,
+        customerLastName: nameParts.lastName,
+        customerPhoneNumber: user.phone,
+        customerEmail: user.email ?? undefined,
+        customerDateOfBirth: user.dateOfBirth ?? undefined,
+      });
+    } catch (error) {
+      this.logger.warn(`Paga customer registration failed for ${user.id}: ${String(error)}`);
+    }
 
     try {
       const virtual = await this.paga.createVirtualAccount({
@@ -190,10 +206,23 @@ export function toPublicUser(user: User) {
     phone: user.phone,
     handle: user.handle,
     name: user.name,
+    email: user.email,
+    dateOfBirth: user.dateOfBirth,
     kycTier: user.kycTier,
     status: user.status,
     createdAt: user.createdAt,
   };
+}
+
+function splitFullName(fullName: string): { firstName: string; lastName: string } {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return { firstName: 'Vireo', lastName: 'Customer' };
+  }
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: parts[0] };
+  }
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
 }
 
 function toPublicDevice(device: Device) {
