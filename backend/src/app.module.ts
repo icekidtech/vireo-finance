@@ -8,10 +8,12 @@ import { AgentModule } from './agent/agent.module';
 import { AuthModule } from './auth/auth.module';
 import { ChallengesModule } from './challenges/challenges.module';
 import { HealthModule } from './health/health.module';
+import { KycModule } from './kyc/kyc.module';
 import { LedgerModule } from './ledger/ledger.module';
 import { MerchantModule } from './merchant/merchant.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
+import { QueueModule } from './queue/queue.module';
 import { RiskModule } from './risk/risk.module';
 import { TransfersModule } from './transfers/transfers.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
@@ -25,6 +27,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     }),
     DatabaseModule,
     HealthModule,
+    KycModule,
     AuthModule,
     AccountsModule,
     LedgerModule,
@@ -35,6 +38,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     AgentModule,
     WebhooksModule,
     ReconciliationModule,
+    QueueModule,
     NotificationsModule,
   ],
 })

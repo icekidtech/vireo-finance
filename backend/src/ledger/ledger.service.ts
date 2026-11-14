@@ -207,6 +207,29 @@ export class LedgerService {
     };
   }
 
+  async getAccountEntries(
+    accountId: string,
+    limit = 50,
+  ): Promise<
+    Array<{
+      id: string;
+      direction: string;
+      amount: string;
+      currency: string;
+      createdAt: Date;
+    }>
+  > {
+    const rows = await this.dataSource.query(
+      `SELECT "id", "direction", "amount", "currency", "createdAt"
+       FROM "ledger_entries"
+       WHERE "accountId" = $1
+       ORDER BY "createdAt" DESC
+       LIMIT $2`,
+      [accountId, Math.min(Math.max(limit, 1), 100)],
+    );
+    return rows;
+  }
+
   async createHold(manager: EntityManager, input: CreateHoldInput): Promise<Hold> {
     assertPositive(input.amount);
     const [row] = await this.lockAccounts(manager, [input.accountId]);

@@ -39,6 +39,17 @@ export interface AppConfig {
     velocityCount: number;
     velocityWindowMinutes: number;
   };
+  notifications: {
+    sms?: {
+      enabled?: boolean;
+      gatewayUrl?: string;
+      apiKey?: string;
+      senderId?: string;
+    };
+    push?: {
+      enabled?: boolean;
+    };
+  };
 }
 
 const int = (value: string | undefined, fallback: number): number => {
@@ -95,5 +106,16 @@ export default (): AppConfig => ({
     newPayeeLimit: BigInt(process.env.RISK_NEW_PAYEE_LIMIT ?? '5000000'),
     velocityCount: int(process.env.RISK_VELOCITY_COUNT, 10),
     velocityWindowMinutes: int(process.env.RISK_VELOCITY_WINDOW_MINUTES, 10),
+  },
+  notifications: {
+    sms: {
+      enabled: bool(process.env.NOTIFICATIONS_SMS_ENABLED, false),
+      gatewayUrl: process.env.NOTIFICATIONS_SMS_GATEWAY_URL ?? undefined,
+      apiKey: process.env.NOTIFICATIONS_SMS_API_KEY ?? undefined,
+      senderId: process.env.NOTIFICATIONS_SMS_SENDER_ID ?? undefined,
+    },
+    push: {
+      enabled: bool(process.env.NOTIFICATIONS_PUSH_ENABLED, false),
+    },
   },
 });
