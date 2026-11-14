@@ -20,7 +20,6 @@
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "@nestjs/bullmq": "^11.0.2",
     "@nestjs/common": "^11.0.6",
     "@nestjs/config": "^4.0.0",
@@ -35,6 +34,7 @@
     "class-validator": "^0.14.1",
     "dotenv": "^16.4.7",
     "ioredis": "^5.4.2",
+    "openai": "^7.56.0",
     "pg": "^8.13.1",
     "reflect-metadata": "^0.2.2",
     "resend": "^6.38.0",

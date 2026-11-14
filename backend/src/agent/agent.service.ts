@@ -17,7 +17,7 @@ import { User } from '../users/user.entity';
 import { AgentSession } from './agent-session.entity';
 import { AgentToolCall } from './agent-tool-call.entity';
 import { AgentToolName, ChatMessageDto, RunAgentToolDto } from './dto/agent.dto';
-import { GeminiService } from './llm/gemini.service';
+import { OpenAIService } from './llm/openai.service';
 
 const BANK_FEE_MINOR = 10000n;
 
@@ -31,7 +31,7 @@ export class AgentService {
     private readonly ledger: LedgerService,
     private readonly transfers: TransfersService,
     private readonly paga: PagaService,
-    private readonly gemini: GeminiService,
+    private readonly openai: OpenAIService,
   ) {}
 
   async createSession(userId: string) {
@@ -62,7 +62,7 @@ export class AgentService {
   ): Promise<{ sessionId: string; reply: string; toolsExecuted: string[] }> {
     const sessionId = dto.sessionId ?? (await this.createSession(userId)).id;
     await this.assertSessionOwner(userId, sessionId);
-    const result = await this.gemini.chat(sessionId, userId, dto.message);
+    const result = await this.openai.chat(sessionId, userId, dto.message);
     return { sessionId, ...result };
   }
 

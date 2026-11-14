@@ -7,7 +7,7 @@ import { TransfersModule } from '../transfers/transfers.module';
 import { User } from '../users/user.entity';
 import { AgentController } from './agent.controller';
 import { AgentService } from './agent.service';
-import { GeminiService } from './llm/gemini.service';
+import { OpenAIService } from './llm/openai.service';
 import { AgentSession } from './agent-session.entity';
 import { AgentToolCall } from './agent-tool-call.entity';
 
@@ -20,7 +20,7 @@ import { AgentToolCall } from './agent-tool-call.entity';
     PagaModule,
   ],
   controllers: [AgentController],
-  providers: [AgentService, GeminiService],
+  providers: [AgentService, OpenAIService],
   exports: [AgentService],
 })
 export class AgentModule {}

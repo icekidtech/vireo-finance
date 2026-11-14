@@ -43,7 +43,7 @@ export interface AppConfig {
     apiKey: string;
     fromEmail: string;
   };
-  gemini: {
+  openai: {
     apiKey: string;
     model: string;
   };
@@ -111,9 +111,9 @@ export default (): AppConfig => ({
     apiKey: process.env.RESEND_API_KEY ?? '',
     fromEmail: process.env.RESEND_FROM_EMAIL ?? 'noreply@vireofinance.com',
   },
-  gemini: {
-    apiKey: process.env.GEMINI_API_KEY ?? '',
-    model: process.env.GEMINI_MODEL ?? 'gemini-1.5-pro',
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY ?? '',
+    model: process.env.OPENAI_MODEL ?? 'gpt-4o',
   },
   googlePlay: {
     integrityApiKey: process.env.GOOGLE_PLAY_INTEGRITY_API_KEY ?? '',
