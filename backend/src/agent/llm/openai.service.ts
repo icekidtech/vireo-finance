@@ -91,6 +91,7 @@ export class OpenAIService {
 
       // Execute each tool call
       for (const toolCall of assistantMessage.tool_calls) {
+        if (toolCall.type !== 'function') continue;
         const toolName = toolCall.function.name as AgentToolName;
         let toolInput: Record<string, unknown> = {};
         try {

@@ -4,8 +4,10 @@ Welcome to the official developer documentation for the **Vireo Finance** backen
 - **NestJS** application framework with strict DTO validation.
 - **PostgreSQL double-entry ledger** as the immutable source of truth for all balances.
 - **Paga Business & Collect API rails** for virtual account provisioning, inbound deposit funding, and external bank payouts.
-- **Hardware Enclave Key-Signing & Cryptographic Challenges** for biometric-backed transaction approvals.
-- **Autonomous AI Banking Agent service** with restricted, human-in-the-loop tool execution.
+- **Hardware Enclave Key-Signing & Cryptographic Challenges** for biometric-backed transaction approvals with Apple App Attest and Google Play Integrity validation.
+- **Email Notifications via Resend** for transactional onboarding, KYC updates, and inbound credit receipts.
+- **Async BullMQ Redis Queues** for background webhook processing and scheduled ledger reconciliations.
+- **Autonomous AI Banking Agent service (OpenAI GPT-4o)** with conversational function-calling and human-in-the-loop tool execution.
 
 ---
 
@@ -39,7 +41,7 @@ http://localhost:3050/api/v1
 ### Authentication Scheme
 - **Mechanism**: Bearer JWT tokens.
 - **Header**: `Authorization: Bearer <token>`
-- **Issuance**: Handled via phone OTP authentication (`/auth/otp/verify`).
+- **Issuance**: Handled via email and password authentication (`POST /auth/login`).
 - **Expiry**: Default 7 days (`JWT_EXPIRES_IN=7d`).
 
 ### Financial Minor Units & Money Formatting
@@ -80,10 +82,11 @@ A complete, production-grade Postman collection is maintained directly in the re
 
 ### Automated Test Scripts
 The collection contains embedded Postman Test scripts that chain requests seamlessly:
-- **Verify OTP & Login**: Automatically parses `accessToken` and updates `{{jwtToken}}`.
+- **Login (Email & Password)**: Automatically parses `accessToken` and updates `{{jwtToken}}`.
 - **Register Device**: Automatically saves the newly generated `id` into `{{registeredDeviceId}}`.
 - **Create Transfer Draft**: Automatically saves `transfer.id` into `{{transferDraftId}}`.
 - **Create Agent Session**: Automatically saves `id` into `{{agentSessionId}}`.
+- **Chat with AI Agent**: Automatically tracks `agentSessionId` across multi-turn prompts.
 - **Create Merchant Order**: Automatically saves `reference` into `{{orderReference}}`.
 
 ---
@@ -92,18 +95,20 @@ The collection contains embedded Postman Test scripts that chain requests seamle
 
 ```
 1. POST /auth/register
-   ↳ Register phone & name → Provisions Wallet + Paga Virtual Account
-2. POST /auth/otp/request
-   ↳ Generates 6-digit OTP (returns devCode in development)
-3. POST /auth/otp/verify
-   ↳ Returns Bearer JWT → Postman stores in {{jwtToken}}
-4. POST /auth/devices
-   ↳ Registers hardware enclave public key (Ed25519)
+   ↳ Register email, password, name → Provisions Wallet + Paga Virtual Account + Welcome Email
+2. POST /auth/login
+   ↳ Authenticates via bcrypt → Postman stores Bearer JWT in {{jwtToken}}
+3. POST /auth/devices
+   ↳ Registers hardware enclave key with Apple App Attest / Google Play Integrity validation
+4. POST /kyc/identification
+   ↳ Uploads ID document to Paga → Upgrades user to Tier 1/2 limits
 5. GET /accounts/me
    ↳ Inspect ledger balance and virtual account details
-6. POST /transfers/drafts
+6. POST /agent/chat
+   ↳ Natural-language conversational banking with OpenAI GPT-4o autonomous tool dispatch
+7. POST /transfers/drafts
    ↳ Creates transfer draft & cryptographic challenge hold
-7. POST /transfers/:id/submit
+8. POST /transfers/:id/submit
    ↳ Submits base64 device signature to finalize transfer
 ```
 
@@ -144,7 +149,7 @@ Returns system uptime and tests PostgreSQL database connectivity.
 ### 2. Authentication & Device Enclave
 
 #### POST `/auth/register`
-Onboards a user by phone number, creates an immutable wallet in the ledger, and provisions a Paga virtual account.
+Onboards a user with email and password, creates an immutable wallet in the ledger, provisions a Paga virtual account, and dispatches a welcome email via Resend.
 
 - **Authentication**: None (Public)
 - **Headers**: `Content-Type: application/json`
@@ -152,16 +157,22 @@ Onboards a user by phone number, creates an immutable wallet in the ledger, and 
 **Request Body Schema:**
 | Field | Type | Required | Description / Rules |
 | :--- | :--- | :--- | :--- |
-| `phone` | string | Yes | E.164 format, 10–15 digits (e.g. `+2348012345678`) |
+| `email` | string | Yes | Valid email address for login and notifications |
+| `password` | string | Yes | Minimum 8 characters (hashed with bcrypt 10 rounds) |
 | `name` | string | Yes | Full legal or display name (2–120 characters) |
+| `phone` | string | No | E.164 format for Paga customer registration |
 | `handle` | string | No | Unique user handle (3–20 alphanumeric chars or `_`) |
+| `dateOfBirth` | string | No | ISO date format `YYYY-MM-DD` |
 
 **Request Example:**
 ```json
 {
-  "phone": "+2348012345678",
+  "email": "amina@example.com",
+  "password": "SecurePassword123!",
   "name": "Amina Bello",
-  "handle": "aminabello"
+  "phone": "+2348012345678",
+  "handle": "aminabello",
+  "dateOfBirth": "1995-05-15"
 }
 ```
 
@@ -173,6 +184,8 @@ Onboards a user by phone number, creates an immutable wallet in the ledger, and 
     "phone": "+2348012345678",
     "handle": "aminabello",
     "name": "Amina Bello",
+    "email": "amina@example.com",
+    "dateOfBirth": "1995-05-15",
     "kycTier": 0,
     "status": "active",
     "createdAt": "2026-11-14T02:05:00.000Z"
@@ -189,6 +202,8 @@ Onboards a user by phone number, creates an immutable wallet in the ledger, and 
     "phone": "+2348012345678",
     "handle": "aminabello",
     "name": "Amina Bello",
+    "email": "amina@example.com",
+    "dateOfBirth": "1995-05-15",
     "kycTier": 0,
     "status": "active",
     "createdAt": "2026-11-14T02:05:00.000Z"
@@ -199,51 +214,27 @@ Onboards a user by phone number, creates an immutable wallet in the ledger, and 
 
 ---
 
-#### POST `/auth/otp/request`
-Generates a one-time login code sent via SMS.
+#### POST `/auth/login`
+Authenticates user credentials using email and bcrypt password verification, returning a signed JWT access token.
 
 - **Authentication**: None (Public)
-- **Request Body:**
-```json
-{
-  "phone": "+2348012345678"
-}
-```
+- **Headers**: `Content-Type: application/json`
 
-**Response Example (201 Created — Development Mode):**
-```json
-{
-  "expiresIn": 300,
-  "devCode": "482910"
-}
-```
-
-**Response Example (404 Not Found):**
-```json
-{
-  "statusCode": 404,
-  "message": "User is not registered",
-  "error": "Not Found"
-}
-```
-
----
-
-#### POST `/auth/otp/verify`
-Validates the SMS OTP code and returns a signed JWT access token.
-
-- **Authentication**: None (Public)
-- **Security Constraint**: Invalidated after 5 failed attempts or upon expiry (300 seconds).
+**Request Body Schema:**
+| Field | Type | Required | Description / Rules |
+| :--- | :--- | :--- | :--- |
+| `email` | string | Yes | Registered user email |
+| `password` | string | Yes | Account password |
 
 **Request Example:**
 ```json
 {
-  "phone": "+2348012345678",
-  "code": "482910"
+  "email": "amina@example.com",
+  "password": "SecurePassword123!"
 }
 ```
 
-**Response Example (201 Created — Success):**
+**Response Example (200 OK — Success):**
 ```json
 {
   "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
@@ -252,10 +243,21 @@ Validates the SMS OTP code and returns a signed JWT access token.
     "phone": "+2348012345678",
     "handle": "aminabello",
     "name": "Amina Bello",
+    "email": "amina@example.com",
+    "dateOfBirth": "1995-05-15",
     "kycTier": 0,
     "status": "active",
     "createdAt": "2026-11-14T02:05:00.000Z"
   }
+}
+```
+
+**Response Example (401 Unauthorized — Invalid Credentials):**
+```json
+{
+  "statusCode": 401,
+  "message": "Invalid credentials",
+  "error": "Unauthorized"
 }
 ```
 
@@ -273,6 +275,8 @@ Fetches the currently authenticated profile.
   "phone": "+2348012345678",
   "handle": "aminabello",
   "name": "Amina Bello",
+  "email": "amina@example.com",
+  "dateOfBirth": "1995-05-15",
   "kycTier": 0,
   "status": "active",
   "createdAt": "2026-11-14T02:05:00.000Z"
@@ -282,16 +286,20 @@ Fetches the currently authenticated profile.
 ---
 
 #### POST `/auth/devices`
-Registers an asymmetric public key generated inside a mobile hardware enclave (Apple Secure Enclave, Android StrongBox/Keystore).
+Registers an asymmetric public key generated inside a mobile hardware enclave (Apple Secure Enclave, Android StrongBox/Keystore) and verifies hardware authenticity.
 
 - **Authentication**: Bearer JWT (`Authorization: Bearer <token>`)
+- **Attestation Validation Engine**:
+  - **iOS**: Attestation object decoded from CBOR and certificate chain cryptographically verified against the official Apple App Attestation Root CA certificate.
+  - **Android**: Attestation token decoded and verified via the Google Play Integrity API.
+  - Returns `attestationState: "verified"` on cryptographic success, or `"failed"` / `"unverified"`.
 
 **Request Body Schema:**
 | Field | Type | Required | Description / Rules |
 | :--- | :--- | :--- | :--- |
 | `publicKey` | string | Yes | Base64-encoded public key (SPKI DER or raw key) |
-| `platform` | string | Yes | One of: `"ios"`, `"android"`, `"web"`, `"pos"` |
-| `algorithm` | string | No | `"ed25519"` (default) or `"p256"` |
+| `platform` | string | Yes | One of: `"ios"`, `"android"` |
+| `algorithm` | string | No | `"ed25519"` (default) or `"es256"` |
 | `attestationToken` | string | No | Hardware attestation payload validating enclave authenticity |
 
 **Request Example:**
@@ -304,15 +312,17 @@ Registers an asymmetric public key generated inside a mobile hardware enclave (A
 }
 ```
 
-**Response Example (201 Created):**
+**Response Example (201 Created — Verified):**
 ```json
 {
   "id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
   "platform": "ios",
   "algorithm": "ed25519",
-  "attestationState": "provided",
+  "attestationState": "verified",
   "status": "active",
   "createdAt": "2026-11-14T02:06:00.000Z"
+}
+```
 }
 ```
 
@@ -629,7 +639,41 @@ Retrieves a single transfer by UUID.
 
 ### 6. Agentic Banking
 
-The agent service runs with a **strictly bounded tool layer** with draft-only permissions for monetary actions.
+The agent service runs with a **strictly bounded tool layer** with draft-only permissions for monetary actions, powered by an autonomous **OpenAI GPT-4o** conversational loop.
+
+#### POST `/agent/chat`
+Conversational endpoint for the AI banking assistant. Automatically runs the OpenAI function-calling loop, executing backend tools (`get_balance`, `list_transactions`, `validate_recipient`, `create_transfer_draft`, `create_payment_request`, `explain_fee`) and replying in clear natural language.
+
+- **Authentication**: Bearer JWT (`Authorization: Bearer <token>`)
+- **Headers**: `Content-Type: application/json`
+
+**Request Body Schema:**
+| Field | Type | Required | Description / Rules |
+| :--- | :--- | :--- | :--- |
+| `sessionId` | string (UUID) | No | Active agent session ID. Created automatically if omitted. |
+| `message` | string | Yes | User's natural-language banking query or command |
+
+**Request Example:**
+```json
+{
+  "sessionId": "11223344-5566-7788-99aa-bbccddeeff00",
+  "message": "What is my current available balance and explain the fee for sending money to a bank?"
+}
+```
+
+**Response Example (201 Created):**
+```json
+{
+  "sessionId": "11223344-5566-7788-99aa-bbccddeeff00",
+  "reply": "Your available balance is NGN 50,000.00. Sending money between Vireo users is completely free, while external bank transfers carry a flat flat fee of NGN 100.00.",
+  "toolsExecuted": [
+    "get_balance",
+    "explain_fee"
+  ]
+}
+```
+
+---
 
 #### POST `/agent/sessions`
 Creates an isolated AI session context.
@@ -849,12 +893,15 @@ Sweeps merchant balance to their registered bank account via Paga payout rails.
 ### 8. Webhooks (Paga Callback Receiver)
 
 #### POST `/webhooks/paga`
-Inbound webhook handler for Paga events:
-1. **Inbound Deposits**: Credits user wallet upon payment to a Paga virtual account.
-2. **Payout Updates**: Finalizes or reverts holds for bank transfers and settlements.
-3. **Payment Request Fulfillment**: Finalizes collection links.
+Inbound webhook handler for Paga events, backed by a **BullMQ Redis Queue** for guaranteed, asynchronous background processing:
+1. Immediately enqueues the inbound event payload into the `webhooks` BullMQ queue and responds `200 OK` with `{ status: "queued", jobId }`.
+2. The background `WebhookProcessor` processes the job:
+   - Cryptographically verifies the HMAC/SHA-512 callback signature against `PAGA_HASH_KEY`.
+   - Deduplicates identical event IDs using PostgreSQL unique constraints.
+   - Posts balanced double-entry transactions (inbound deposits credit user wallets, payout callbacks resolve holds).
+   - Dispatches real-time email notifications via Resend.
 
-- **Authentication**: Validated cryptographically via `x-paga-hash` header or `hash` parameter in payload matching `PAGA_HASH_KEY`.
+- **Authentication**: Validated asynchronously by the worker via `x-paga-hash` header or `hash` parameter in payload matching `PAGA_HASH_KEY`.
 - **Idempotency**: Automatic deduplication via event notification IDs.
 
 **Deposit Notification Request Example:**
@@ -872,19 +919,11 @@ Inbound webhook handler for Paga events:
 }
 ```
 
-**Response Example (200 OK — Credited):**
+**Response Example (200 OK — Enqueued in BullMQ):**
 ```json
 {
-  "status": "SUCCESS",
-  "credited": true
-}
-```
-
-**Response Example (200 OK — Duplicate Deduplicated):**
-```json
-{
-  "status": "SUCCESS",
-  "duplicate": true
+  "status": "queued",
+  "jobId": "1"
 }
 ```
 
