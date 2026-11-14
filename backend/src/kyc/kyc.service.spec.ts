@@ -20,6 +20,7 @@ describe('KycService', () => {
     name: 'Amina Bello',
     handle: 'aminabello',
     email: 'amina@example.com',
+    passwordHash: null,
     dateOfBirth: '1995-05-15',
     kycTier: 0,
     status: UserStatus.ACTIVE,
