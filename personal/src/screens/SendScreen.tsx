@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { View, Text, TextInput, Button, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
-import type { NativeStackScreenProps } from '@react-navigation/stack';
+import type { StackScreenProps } from '@react-navigation/stack';
 
-type SendScreenProps = NativeStackScreenProps<{
+type SendScreenProps = StackScreenProps<{
   Wallet: undefined;
   Send: undefined;
 }, 'Send'>;

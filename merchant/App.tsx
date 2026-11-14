@@ -1,5 +1,5 @@
 import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/stack';
+import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
@@ -10,7 +10,7 @@ import OrdersScreen from './src/screens/OrdersScreen';
 import SettleScreen from './src/screens/SettleScreen';
 import { View, ActivityIndicator } from 'react-native';
 
-const Stack = createNativeStackNavigator();
+const Stack = createStackNavigator();
 
 function AppNavigator() {
   const { token, isLoading } = useAuth();

@@ -3,9 +3,9 @@ import { View, Text, TextInput, Button, TouchableOpacity, ActivityIndicator, Sty
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import QRCode from 'react-native-qrcode-svg';
-import type { NativeStackScreenProps } from '@react-navigation/stack';
+import type { StackScreenProps } from '@react-navigation/stack';
 
-type CreateOrderScreenProps = NativeStackScreenProps<{
+type CreateOrderScreenProps = StackScreenProps<{
   Dashboard: undefined;
   CreateOrder: undefined;
 }, 'CreateOrder'>;

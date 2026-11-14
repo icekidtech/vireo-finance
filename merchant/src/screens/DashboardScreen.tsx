@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { View, Text, Button, TouchableOpacity, ActivityIndicator, StyleSheet, FlatList } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
-import type { NativeStackScreenProps } from '@react-navigation/stack';
+import type { StackScreenProps } from '@react-navigation/stack';
 
-type DashboardScreenProps = NativeStackScreenProps<{
+type DashboardScreenProps = StackScreenProps<{
   Dashboard: undefined;
   CreateOrder: undefined;
   Orders: undefined;

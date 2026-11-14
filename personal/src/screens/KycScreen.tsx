@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { View, Text, TextInput, Button, ActivityIndicator, StyleSheet } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
-import type { NativeStackScreenProps } from '@react-navigation/stack';
+import type { StackScreenProps } from '@react-navigation/stack';
 
-type KycScreenProps = NativeStackScreenProps<{
+type KycScreenProps = StackScreenProps<{
   Wallet: undefined;
   Kyc: undefined;
 }, 'Kyc'>;

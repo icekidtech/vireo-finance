@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { View, Text, TextInput, Button, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
-import type { NativeStackScreenProps } from '@react-navigation/stack';
+import type { StackScreenProps } from '@react-navigation/stack';
 
-type SettleScreenProps = NativeStackScreenProps<{
+type SettleScreenProps = StackScreenProps<{
   Dashboard: undefined;
   Settle: undefined;
 }, 'Settle'>;

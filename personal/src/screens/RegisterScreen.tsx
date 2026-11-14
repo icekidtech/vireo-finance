@@ -3,7 +3,9 @@ import { View, Text, TextInput, Button, TouchableOpacity, ActivityIndicator, Sty
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 
-export default function RegisterScreen() {
+type ScreenProps = { navigation: any };
+
+export default function RegisterScreen({ navigation }: ScreenProps) {
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [handle, setHandle] = useState('');
@@ -53,7 +55,7 @@ export default function RegisterScreen() {
       />
       <Button title="Register" onPress={onRegister} disabled={loading} />
       {loading && <ActivityIndicator size="small" />}
-      <TouchableOpacity style={styles.link} onPress={() => {}}>
+      <TouchableOpacity style={styles.link} onPress={() => navigation.goBack()}>
         <Text style={styles.linkText}>Already have an account? Verify OTP</Text>
       </TouchableOpacity>
     </View>
