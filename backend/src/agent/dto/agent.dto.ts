@@ -1,4 +1,4 @@
-import { IsIn, IsObject, IsOptional, IsUUID } from 'class-validator';
+import { IsIn, IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export const AGENT_TOOLS = [
   'get_balance',
@@ -24,3 +24,12 @@ export class RunAgentToolDto {
 }
 
 export class CreateAgentSessionDto {}
+
+export class ChatMessageDto {
+  @IsOptional()
+  @IsUUID()
+  sessionId?: string;
+
+  @IsString()
+  message: string;
+}

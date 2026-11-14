@@ -39,6 +39,17 @@ export interface AppConfig {
     velocityCount: number;
     velocityWindowMinutes: number;
   };
+  resend: {
+    apiKey: string;
+    fromEmail: string;
+  };
+  gemini: {
+    apiKey: string;
+    model: string;
+  };
+  googlePlay: {
+    integrityApiKey: string;
+  };
 }
 
 const int = (value: string | undefined, fallback: number): number => {
@@ -95,5 +106,16 @@ export default (): AppConfig => ({
     newPayeeLimit: BigInt(process.env.RISK_NEW_PAYEE_LIMIT ?? '5000000'),
     velocityCount: int(process.env.RISK_VELOCITY_COUNT, 10),
     velocityWindowMinutes: int(process.env.RISK_VELOCITY_WINDOW_MINUTES, 10),
+  },
+  resend: {
+    apiKey: process.env.RESEND_API_KEY ?? '',
+    fromEmail: process.env.RESEND_FROM_EMAIL ?? 'noreply@vireofinance.com',
+  },
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY ?? '',
+    model: process.env.GEMINI_MODEL ?? 'gemini-1.5-pro',
+  },
+  googlePlay: {
+    integrityApiKey: process.env.GOOGLE_PLAY_INTEGRITY_API_KEY ?? '',
   },
 });

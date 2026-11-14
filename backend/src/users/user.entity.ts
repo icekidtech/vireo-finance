@@ -24,8 +24,12 @@ export class User {
   @Column({ type: 'varchar', length: 120 })
   name: string;
 
+  @Index({ unique: true, where: '"email" IS NOT NULL' })
   @Column({ type: 'varchar', length: 120, nullable: true })
   email: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  passwordHash: string | null;
 
   @Column({ type: 'varchar', length: 32, nullable: true })
   dateOfBirth: string | null;

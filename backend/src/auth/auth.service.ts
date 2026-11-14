@@ -1,25 +1,22 @@
 import {
-  BadRequestException,
   Injectable,
   Logger,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { randomInt } from 'crypto';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import * as bcrypt from 'bcrypt';
+import { DataSource, Repository } from 'typeorm';
 import { AccountsService } from '../accounts/accounts.service';
 import { PagaService } from '../paga/paga.service';
-import { hmacSha256Hex } from '../common/crypto';
-import { DeviceStatus, SignatureAlgorithm, UserStatus } from '../common/enums';
+import { NotificationsService } from '../notifications/notifications.service';
+import { DevicePlatform, DeviceStatus, SignatureAlgorithm, UserStatus } from '../common/enums';
 import { User } from '../users/user.entity';
 import { Device } from './device.entity';
-import { PhoneOtp } from './phone-otp.entity';
-import { RegisterDeviceDto, RegisterDto } from './dto/auth.dto';
-
-const MAX_OTP_ATTEMPTS = 5;
+import { LoginDto, RegisterDeviceDto, RegisterDto } from './dto/auth.dto';
+import { AppleAttestService } from './attestation/apple-attest.service';
+import { GooglePlayIntegrityService } from './attestation/google-play-integrity.service';
 
 @Injectable()
 export class AuthService {
@@ -29,19 +26,28 @@ export class AuthService {
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Device) private readonly devices: Repository<Device>,
-    @InjectRepository(PhoneOtp) private readonly otps: Repository<PhoneOtp>,
     private readonly accounts: AccountsService,
     private readonly paga: PagaService,
+    private readonly notifications: NotificationsService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly appleAttest: AppleAttestService,
+    private readonly googlePlayIntegrity: GooglePlayIntegrityService,
   ) {}
 
+  /* ------------------------------------------------------------------ */
+  /* Register (email + password)                                        */
+  /* ------------------------------------------------------------------ */
+
   async register(dto: RegisterDto) {
-    const phone = normalizePhone(dto.phone);
-    const existing = await this.users.findOne({ where: { phone } });
+    const email = dto.email.trim().toLowerCase();
+    const existing = await this.users.findOne({ where: { email } });
     if (existing) {
       return { user: toPublicUser(existing), created: false };
     }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const phone = dto.phone ? normalizePhone(dto.phone) : '';
 
     const { user, walletId } = await this.dataSource.transaction(async (manager) => {
       const savedUser = await manager.getRepository(User).save(
@@ -49,7 +55,8 @@ export class AuthService {
           phone,
           name: dto.name.trim(),
           handle: dto.handle?.toLowerCase() ?? null,
-          email: dto.email?.trim().toLowerCase() ?? null,
+          email,
+          passwordHash,
           dateOfBirth: dto.dateOfBirth?.trim() ?? null,
           kycTier: 0,
         }),
@@ -58,6 +65,7 @@ export class AuthService {
       return { user: savedUser, walletId: account.id };
     });
 
+    // Register with Paga (best-effort)
     const nameParts = splitFullName(user.name);
     try {
       await this.paga.registerCustomer({
@@ -72,6 +80,7 @@ export class AuthService {
       this.logger.warn(`Paga customer registration failed for ${user.id}: ${String(error)}`);
     }
 
+    // Provision virtual account (best-effort)
     try {
       const virtual = await this.paga.createVirtualAccount({
         userId: user.id,
@@ -83,73 +92,72 @@ export class AuthService {
       this.logger.warn(`Virtual account provisioning failed for ${user.id}: ${String(error)}`);
     }
 
+    // Send welcome email (best-effort)
+    try {
+      await this.notifications.sendWelcome(user);
+    } catch (error) {
+      this.logger.warn(`Welcome email failed for ${user.id}: ${String(error)}`);
+    }
+
     return { user: toPublicUser(user), created: true };
   }
 
-  async requestOtp(phoneInput: string) {
-    const phone = normalizePhone(phoneInput);
-    const user = await this.users.findOne({ where: { phone } });
-    if (!user) {
-      throw new NotFoundException('User is not registered');
+  /* ------------------------------------------------------------------ */
+  /* Login (email + password)                                           */
+  /* ------------------------------------------------------------------ */
+
+  async login(dto: LoginDto) {
+    const email = dto.email.trim().toLowerCase();
+    const user = await this.users.findOne({ where: { email } });
+
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedException('Invalid credentials');
     }
+
+    const valid = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!valid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     if (user.status !== UserStatus.ACTIVE) {
-      throw new UnauthorizedException('User is not active');
-    }
-
-    const code = randomInt(100000, 1000000).toString();
-    const ttl = this.config.get<number>('otp.ttlSeconds') ?? 300;
-    await this.otps.save(
-      this.otps.create({
-        phone,
-        codeHash: this.hashOtp(phone, code),
-        expiresAt: new Date(Date.now() + ttl * 1000),
-      }),
-    );
-
-    const isProduction = this.config.get<string>('env') === 'production';
-    return {
-      expiresIn: ttl,
-      ...(isProduction ? {} : { devCode: code }),
-    };
-  }
-
-  async verifyOtp(phoneInput: string, code: string) {
-    const phone = normalizePhone(phoneInput);
-    const otp = await this.otps.findOne({
-      where: { phone, consumedAt: IsNull() },
-      order: { createdAt: 'DESC' },
-    });
-    if (!otp || otp.expiresAt.getTime() < Date.now()) {
-      throw new BadRequestException('OTP is invalid or expired');
-    }
-    if (otp.attempts >= MAX_OTP_ATTEMPTS) {
-      throw new BadRequestException('Too many OTP attempts');
-    }
-    if (otp.codeHash !== this.hashOtp(phone, code)) {
-      otp.attempts += 1;
-      await this.otps.save(otp);
-      throw new BadRequestException('OTP is invalid or expired');
-    }
-
-    otp.consumedAt = new Date();
-    await this.otps.save(otp);
-
-    const user = await this.users.findOne({ where: { phone } });
-    if (!user) {
-      throw new NotFoundException('User is not registered');
+      throw new UnauthorizedException('Account is not active');
     }
 
     return { accessToken: this.issueToken(user.id), user: toPublicUser(user) };
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Device management (with attestation verification)                  */
+  /* ------------------------------------------------------------------ */
+
   async registerDevice(userId: string, dto: RegisterDeviceDto) {
+    let attestationState = 'unverified';
+
+    if (dto.attestationToken) {
+      if (dto.platform === DevicePlatform.IOS) {
+        const result = await this.appleAttest.verify(dto.attestationToken, userId);
+        attestationState = result.verified ? 'verified' : 'failed';
+        if (!result.verified) {
+          this.logger.warn(`Apple attestation failed for user ${userId}: ${result.error}`);
+        }
+      } else if (dto.platform === DevicePlatform.ANDROID) {
+        const result = await this.googlePlayIntegrity.verify(dto.attestationToken);
+        attestationState = result.verified ? 'verified' : 'failed';
+        if (!result.verified) {
+          this.logger.warn(`Play Integrity failed for user ${userId}: ${result.error}`);
+        }
+      } else {
+        attestationState = 'provided';
+      }
+    }
+
     const device = await this.devices.save(
       this.devices.create({
         userId,
         publicKey: dto.publicKey,
         platform: dto.platform,
         algorithm: dto.algorithm ?? SignatureAlgorithm.ED25519,
-        attestationState: dto.attestationToken ? 'provided' : 'unverified',
+        attestationState,
         status: DeviceStatus.ACTIVE,
       }),
     );
@@ -167,7 +175,7 @@ export class AuthService {
   async revokeDevice(userId: string, deviceId: string) {
     const device = await this.devices.findOne({ where: { id: deviceId, userId } });
     if (!device) {
-      throw new NotFoundException('Device not found');
+      throw new UnauthorizedException('Device not found');
     }
     device.status = DeviceStatus.REVOKED;
     device.revokedAt = new Date();
@@ -175,10 +183,14 @@ export class AuthService {
     return toPublicDevice(device);
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Profile                                                            */
+  /* ------------------------------------------------------------------ */
+
   async getProfile(userId: string) {
     const user = await this.users.findOne({ where: { id: userId } });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new UnauthorizedException('User not found');
     }
     return toPublicUser(user);
   }
@@ -186,15 +198,15 @@ export class AuthService {
   issueToken(userId: string): string {
     return this.jwt.sign({ sub: userId });
   }
-
-  private hashOtp(phone: string, code: string): string {
-    const secret = this.config.get<string>('jwt.secret') ?? 'dev-only-change-me';
-    return hmacSha256Hex(secret, `${phone}:${code}`);
-  }
 }
+
+/* ------------------------------------------------------------------ */
+/* Helpers                                                            */
+/* ------------------------------------------------------------------ */
 
 function normalizePhone(phone: string): string {
   const trimmed = phone.trim();
+  if (!trimmed) return '';
   return trimmed.startsWith('+')
     ? `+${trimmed.slice(1).replace(/\D/g, '')}`
     : trimmed.replace(/\D/g, '');
