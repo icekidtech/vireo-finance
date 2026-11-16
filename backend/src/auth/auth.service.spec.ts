@@ -10,7 +10,7 @@ import { PhoneOtp } from './phone-otp.entity';
 import { AccountsService } from '../accounts/accounts.service';
 import { PagaService } from '../paga/paga.service';
 import { hmacSha256Hex } from '../common/crypto';
-import { DevicePlatform, DeviceStatus, SignatureAlgorithm, UserStatus } from '../common/enums';
+import { DevicePlatform, DeviceStatus, SignatureAlgorithm, UserRole, UserStatus } from '../common/enums';
 
 const mockUser: User = {
   id: 'user-1',
@@ -19,6 +19,7 @@ const mockUser: User = {
   name: 'Alice',
   kycTier: 0,
   status: UserStatus.ACTIVE,
+  role: UserRole.USER,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

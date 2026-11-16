@@ -87,6 +87,11 @@ export class VireoApi {
     return data;
   }
 
+  async cancelOrder(reference: string) {
+    const { data } = await this.client.post(`/merchants/orders/${reference}/cancel`);
+    return data;
+  }
+
   async createSettlementDraft(deviceId: string, amount?: string) {
     const { data } = await this.client.post('/merchants/settlements/drafts', { amount, deviceId });
     return data;

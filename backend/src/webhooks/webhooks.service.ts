@@ -9,7 +9,7 @@ import { parseAmountToMinor } from '../database/money';
 import { LedgerService } from '../ledger/ledger.service';
 import { MerchantService } from '../merchant/merchant.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { IncomingHeaders, PagaService } from '../paga/paga.service';
+import { IncomingHeaders, PagaService, statusFromText } from '../paga/paga.service';
 import { TransfersService } from '../transfers/transfers.service';
 import { PagaEvent } from './paga-event.entity';
 
@@ -133,9 +133,23 @@ export class WebhooksService {
     body: Record<string, unknown>,
   ): Promise<{ payoutUpdated?: boolean; ignored?: boolean }> {
     const reference = String(body.referenceNumber ?? '');
-    const success = String(body.responseCode ?? '0') === '0';
     const providerReference = String(body.transactionId ?? reference);
     const reason = String(body.message ?? 'Paga reported failure');
+
+    // Only act on an explicit outcome. A missing status must never default to
+    // success, and a still-pending payout is left for reconciliation.
+    let success: boolean;
+    if (body.transactionStatus !== undefined) {
+      const status = statusFromText(body.transactionStatus);
+      if (status === 'pending') {
+        return { ignored: true };
+      }
+      success = status === 'completed';
+    } else if (body.responseCode !== undefined) {
+      success = String(body.responseCode) === '0';
+    } else {
+      return { ignored: true };
+    }
 
     const handled =
       (await this.transfers.handlePayoutCallback(reference, success, providerReference, reason)) ||

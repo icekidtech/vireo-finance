@@ -4,6 +4,11 @@ export enum UserStatus {
   CLOSED = 'closed',
 }
 
+export enum UserRole {
+  USER = 'user',
+  ADMIN = 'admin',
+}
+
 export enum KycStatus {
   PENDING = 'pending',
   VERIFIED = 'verified',

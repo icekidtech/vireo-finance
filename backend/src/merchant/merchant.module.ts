@@ -12,10 +12,11 @@ import { MerchantOrder } from './merchant-order.entity';
 import { Merchant } from './merchant.entity';
 import { MerchantService } from './merchant.service';
 import { Settlement } from './settlement.entity';
+import { User } from '../users/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Merchant, MerchantOrder, Settlement, Hold, Challenge]),
+    TypeOrmModule.forFeature([Merchant, MerchantOrder, Settlement, Hold, Challenge, User]),
     AccountsModule,
     LedgerModule,
     ChallengesModule,

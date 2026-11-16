@@ -13,7 +13,7 @@ import { DataSource, IsNull, Repository } from 'typeorm';
 import { AccountsService } from '../accounts/accounts.service';
 import { PagaService } from '../paga/paga.service';
 import { hmacSha256Hex } from '../common/crypto';
-import { DeviceStatus, SignatureAlgorithm, UserStatus } from '../common/enums';
+import { DeviceStatus, SignatureAlgorithm, UserRole, UserStatus } from '../common/enums';
 import { User } from '../users/user.entity';
 import { Device } from './device.entity';
 import { PhoneOtp } from './phone-otp.entity';
@@ -50,6 +50,7 @@ export class AuthService {
           name: dto.name.trim(),
           handle: dto.handle?.toLowerCase() ?? null,
           kycTier: 0,
+          role: this.isAdminPhone(phone) ? UserRole.ADMIN : UserRole.USER,
         }),
       );
       const account = await this.accounts.createWallet(savedUser.id, manager);
@@ -174,6 +175,12 @@ export class AuthService {
   private hashOtp(phone: string, code: string): string {
     const secret = this.config.get<string>('jwt.secret') ?? 'dev-only-change-me';
     return hmacSha256Hex(secret, `${phone}:${code}`);
+  }
+
+  /** Staff bootstrap: phones listed in ADMIN_PHONES register with the admin role. */
+  private isAdminPhone(phone: string): boolean {
+    const adminPhones = (this.config.get<string[]>('admin.phones') ?? []).map(normalizePhone);
+    return adminPhones.includes(phone);
   }
 }
 

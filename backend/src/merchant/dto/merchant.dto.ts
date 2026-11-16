@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, IsUUID, Length, Matches, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Min } from 'class-validator';
 
 const AMOUNT_PATTERN = /^\d{1,15}(\.\d{1,2})?$/;
 const HANDLE_PATTERN = /^[a-zA-Z0-9_]{3,60}$/;
@@ -58,4 +58,9 @@ export class SubmitSettlementDto {
   @IsString()
   @Length(1, 512)
   signature: string;
+}
+
+export class VerifyKybDto {
+  @IsIn(['verified', 'rejected'])
+  status: 'verified' | 'rejected';
 }

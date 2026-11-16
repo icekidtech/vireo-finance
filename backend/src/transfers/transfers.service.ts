@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
   Injectable,
@@ -409,6 +410,15 @@ export class TransfersService {
         narration: 'Vireo transfer',
       });
     } catch (error) {
+      if (error instanceof BadGatewayException) {
+        // Ambiguous outcome: Paga may have accepted the payout before the
+        // connection failed. Keep the transfer PENDING (funds held) and let
+        // reconciliation or the callback resolve it.
+        this.logger.warn(
+          `Paga payout outcome unknown for transfer=${pending.id}: ${String(error)}`,
+        );
+        return null;
+      }
       await this.failBankTransfer(pending.id, 'Paga payout request failed');
       throw error;
     }

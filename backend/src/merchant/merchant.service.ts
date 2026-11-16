@@ -1,12 +1,14 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, LessThan, Repository } from 'typeorm';
 import { AccountsService } from '../accounts/accounts.service';
 import { Challenge } from '../challenges/challenge.entity';
 import { ChallengesService } from '../challenges/challenges.service';
@@ -32,6 +34,8 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 
 @Injectable()
 export class MerchantService {
+  private readonly logger = new Logger(MerchantService.name);
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(Merchant) private readonly merchants: Repository<Merchant>,
@@ -130,6 +134,59 @@ export class MerchantService {
     return presentOrder(order, merchant);
   }
 
+  async cancelOrder(userId: string, reference: string) {
+    const merchant = await this.getByOwner(userId);
+    // Lock the order so a concurrent payment cannot race the cancellation.
+    const order = await this.ledger.runInTransaction(async (manager) => {
+      const locked = await manager.getRepository(MerchantOrder).findOne({
+        where: { reference, merchantId: merchant.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!locked) {
+        throw new NotFoundException('Merchant order not found');
+      }
+      if (locked.status === MerchantOrderStatus.PAID) {
+        throw new BadRequestException('Paid orders cannot be cancelled');
+      }
+      if (
+        locked.status === MerchantOrderStatus.CANCELLED ||
+        locked.status === MerchantOrderStatus.EXPIRED
+      ) {
+        return locked;
+      }
+      locked.status = MerchantOrderStatus.CANCELLED;
+      return manager.getRepository(MerchantOrder).save(locked);
+    });
+    return presentOrder(order, merchant);
+  }
+
+  /**
+   * Bulk-expire open orders past their TTL. Called by the reconciliation job;
+   * the payment path also expires lazily, so this only cleans up listings.
+   */
+  async expireOverdueOrders(now: Date = new Date()): Promise<number> {
+    const result = await this.orders.update(
+      { status: MerchantOrderStatus.OPEN, expiresAt: LessThan(now) },
+      { status: MerchantOrderStatus.EXPIRED },
+    );
+    return result.affected ?? 0;
+  }
+
+  async listAllMerchants() {
+    const rows = await this.merchants.find({ order: { createdAt: 'DESC' }, take: 100 });
+    return rows.map(presentMerchant);
+  }
+
+  async verifyKyb(merchantId: string, status: 'verified' | 'rejected') {
+    const merchant = await this.merchants.findOne({ where: { id: merchantId } });
+    if (!merchant) {
+      throw new NotFoundException('Merchant not found');
+    }
+    merchant.kybStatus = status;
+    await this.merchants.save(merchant);
+    return presentMerchant(merchant);
+  }
+
   async dashboard(userId: string) {
     const merchant = await this.getByOwner(userId);
     const account = await this.accounts.getMerchantAccount(merchant.id);
@@ -168,6 +225,9 @@ export class MerchantService {
 
   async createSettlementDraft(userId: string, dto: CreateSettlementDraftDto) {
     const merchant = await this.getByOwner(userId);
+    if (merchant.kybStatus !== 'verified') {
+      throw new BadRequestException('Merchant KYB must be verified before settling');
+    }
     const account = await this.accounts.getMerchantAccount(merchant.id);
     const balance = await this.ledger.getBalance(account.id);
     const amount = dto.amount ? parseAmountToMinor(dto.amount) : balance.available;
@@ -255,6 +315,9 @@ export class MerchantService {
       }
       await this.consumeForSettlement(manager, locked, userId, signature);
       locked.status = SettlementStatus.PENDING;
+      // Record the payout reference before calling Paga so reconciliation can
+      // resolve the outcome even if the response is lost.
+      locked.pagaReference = `settlement:${locked.id}`;
       return manager.getRepository(Settlement).save(locked);
     });
 
@@ -273,6 +336,15 @@ export class MerchantService {
         narration: 'Vireo merchant settlement',
       });
     } catch (error) {
+      if (error instanceof BadGatewayException) {
+        // Ambiguous outcome: Paga may have accepted the payout. Keep the
+        // settlement PENDING (funds held) for reconciliation/callback.
+        this.logger.warn(
+          `Paga settlement outcome unknown for settlement=${settlement.id}: ${String(error)}`,
+        );
+        const latest = await this.settlements.findOne({ where: { id: settlement.id } });
+        return presentSettlement(latest ?? settlement);
+      }
       await this.failSettlementById(settlement.id, 'Paga payout request failed');
       throw error;
     }

@@ -493,7 +493,7 @@ function statusFromOperation(raw: Record<string, unknown>): 'pending' | 'complet
   return statusFromText(raw.transactionStatus);
 }
 
-function statusFromText(value: unknown): 'pending' | 'completed' | 'failed' {
+export function statusFromText(value: unknown): 'pending' | 'completed' | 'failed' {
   const status = String(value ?? '').toUpperCase();
   if (['SUCCESSFUL', 'SUCCESS', 'COMPLETED', 'COMPLETE'].includes(status)) return 'completed';
   if (['FAILED', 'FAILURE', 'REVERSED', 'CANCELLED'].includes(status)) return 'failed';

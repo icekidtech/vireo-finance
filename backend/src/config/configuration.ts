@@ -20,6 +20,9 @@ export interface AppConfig {
   challenge: {
     ttlSeconds: number;
   };
+  admin: {
+    phones: string[];
+  };
   redis: {
     host: string;
     port: number;
@@ -83,6 +86,12 @@ export default (): AppConfig => ({
   },
   challenge: {
     ttlSeconds: int(process.env.CHALLENGE_TTL_SECONDS, 120),
+  },
+  admin: {
+    phones: (process.env.ADMIN_PHONES ?? '')
+      .split(',')
+      .map((phone) => phone.trim())
+      .filter((phone) => phone.length > 0),
   },
   redis: {
     host: process.env.REDIS_HOST ?? 'localhost',

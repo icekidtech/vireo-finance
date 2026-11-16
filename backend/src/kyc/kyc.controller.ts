@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, UseGuards, Param, Patch } from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { AdminGuard } from '../common/guards/admin.guard';
 import { KycService } from './kyc.service';
 import { SubmitKycDto, VerifyKycDto } from './kyc.dto';
 
@@ -20,13 +21,13 @@ export class KycController {
     return this.kyc.getUserKycStatus(user.userId);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @Get('pending')
   listPending() {
     return this.kyc.listPendingKyc();
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @Patch(':id/verify')
   verify(@Param('id') id: string, @Body() dto: VerifyKycDto) {
     return this.kyc.verifyKyc(id, dto);

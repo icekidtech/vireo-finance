@@ -1,7 +1,14 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Challenge } from '../challenges/challenge.entity';
-import { ChallengeType, HoldStatus, LedgerTransactionType, SettlementStatus } from '../common/enums';
+import {
+  ChallengeType,
+  HoldStatus,
+  LedgerTransactionType,
+  MerchantOrderStatus,
+  SettlementStatus,
+} from '../common/enums';
 import { Hold } from '../ledger/hold.entity';
+import { MerchantOrder } from './merchant-order.entity';
 import { MerchantService } from './merchant.service';
 import { Settlement } from './settlement.entity';
 
@@ -11,7 +18,7 @@ function makeMerchant(overrides: any = {}) {
     ownerUserId: 'user-1',
     handle: 'biz',
     businessName: 'Biz Name',
-    kybStatus: 'pending',
+    kybStatus: 'verified',
     settlementBankCode: '058',
     settlementAccountNumber: '0123456789',
     settlementAccountName: 'Biz Name',
@@ -54,10 +61,28 @@ function makeChallenge(overrides: any = {}) {
   };
 }
 
+function makeOrder(overrides: any = {}) {
+  return {
+    id: 'order-1',
+    merchantId: 'merchant-1',
+    reference: 'ord_abc',
+    amount: '50000',
+    currency: 'NGN',
+    status: MerchantOrderStatus.OPEN,
+    paidByUserId: null,
+    transferId: null,
+    note: null,
+    expiresAt: new Date(Date.now() + 300000),
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
+
 interface HarnessOptions {
   merchant?: any;
   settlement?: any;
   challenge?: any;
+  order?: any;
   available?: bigint;
   hold?: any;
   pagaResult?: any;
@@ -68,6 +93,7 @@ function makeService(opts: HarnessOptions = {}) {
   const merchant = opts.merchant ?? makeMerchant();
   const settlement = opts.settlement ?? makeSettlement();
   const challenge = opts.challenge ?? makeChallenge();
+  const order = opts.order === undefined ? makeOrder() : opts.order;
   const hold = opts.hold ?? { id: 'hold-1', accountId: 'acc-m', status: HoldStatus.ACTIVE };
 
   const createHold = jest.fn(async () => ({ id: 'hold-1' }));
@@ -103,6 +129,15 @@ function makeService(opts: HarnessOptions = {}) {
       if (entity === Challenge) {
         return { findOne: jest.fn(async () => challenge) };
       }
+      if (entity === MerchantOrder) {
+        return {
+          findOne: jest.fn(async () => order),
+          save: jest.fn(async (dto: any) => {
+            if (order) Object.assign(order, dto);
+            return dto;
+          }),
+        };
+      }
       if (entity === Hold) {
         return { findOne: jest.fn(async () => hold) };
       }
@@ -135,7 +170,19 @@ function makeService(opts: HarnessOptions = {}) {
     }),
     find: jest.fn(async () => []),
   };
-  const merchantsRepo = { findOne: jest.fn(async () => merchant) };
+  const merchantsRepo = {
+    findOne: jest.fn(async () => merchant),
+    save: jest.fn(async (dto: any) => dto),
+    find: jest.fn(async () => [merchant]),
+  };
+  const ordersRepo = {
+    findOne: jest.fn(async () => order),
+    update: jest.fn(async (_criteria: any, patch: any) => {
+      if (order) Object.assign(order, patch);
+      return { affected: 1 };
+    }),
+    find: jest.fn(async () => []),
+  };
   const accounts = { getMerchantAccount: jest.fn(async () => ({ id: 'acc-m' })) };
   const challenges = { issue, consume };
   const paga = { depositToBank };
@@ -143,7 +190,7 @@ function makeService(opts: HarnessOptions = {}) {
   const service = new MerchantService(
     {} as any,
     merchantsRepo as any,
-    {} as any,
+    ordersRepo as any,
     settlementsRepo as any,
     accounts as any,
     ledger as any,
@@ -155,12 +202,23 @@ function makeService(opts: HarnessOptions = {}) {
     service,
     settlement,
     challenge,
+    order,
     spies: { createHold, releaseHold, captureHold, post, consume, issue, depositToBank },
     settlementsRepo,
+    merchantsRepo,
+    ordersRepo,
   };
 }
 
 describe('MerchantService.createSettlementDraft', () => {
+  it('rejects settlement when merchant KYB is not verified', async () => {
+    const { service, spies } = makeService({ merchant: makeMerchant({ kybStatus: 'pending' }) });
+    await expect(
+      service.createSettlementDraft('user-1', { deviceId: 'device-1' }),
+    ).rejects.toThrow('Merchant KYB must be verified before settling');
+    expect(spies.createHold).not.toHaveBeenCalled();
+  });
+
   it('rejects an amount above the available balance', async () => {
     const { service } = makeService({ available: 1000n });
     await expect(
@@ -312,5 +370,71 @@ describe('MerchantService.consumeForSettlement binding', () => {
       manager,
       expect.objectContaining({ challengeId: 'challenge-1', type: ChallengeType.SETTLEMENT, signature: 'sig' }),
     );
+  });
+});
+
+describe('MerchantService.cancelOrder', () => {
+  it('cancels an open order', async () => {
+    const { service, order } = makeService();
+    const result = await service.cancelOrder('user-1', 'ord_abc');
+    expect(result.status).toBe(MerchantOrderStatus.CANCELLED);
+    expect(order.status).toBe(MerchantOrderStatus.CANCELLED);
+  });
+
+  it('rejects cancelling a paid order', async () => {
+    const { service } = makeService({ order: makeOrder({ status: MerchantOrderStatus.PAID }) });
+    await expect(service.cancelOrder('user-1', 'ord_abc')).rejects.toThrow(
+      'Paid orders cannot be cancelled',
+    );
+  });
+
+  it('is idempotent for an already cancelled order', async () => {
+    const { service } = makeService({ order: makeOrder({ status: MerchantOrderStatus.CANCELLED }) });
+    const result = await service.cancelOrder('user-1', 'ord_abc');
+    expect(result.status).toBe(MerchantOrderStatus.CANCELLED);
+  });
+
+  it('returns an expired order unchanged', async () => {
+    const { service } = makeService({ order: makeOrder({ status: MerchantOrderStatus.EXPIRED }) });
+    const result = await service.cancelOrder('user-1', 'ord_abc');
+    expect(result.status).toBe(MerchantOrderStatus.EXPIRED);
+  });
+
+  it('rejects an order belonging to another merchant', async () => {
+    const { service } = makeService({ order: null });
+    await expect(service.cancelOrder('user-1', 'ord_abc')).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe('MerchantService.expireOverdueOrders', () => {
+  it('bulk-updates only open orders past their expiry', async () => {
+    const { service, ordersRepo } = makeService();
+    const now = new Date();
+    const count = await service.expireOverdueOrders(now);
+    expect(count).toBe(1);
+    const [criteria, patch] = ordersRepo.update.mock.calls[0];
+    expect(criteria.status).toBe(MerchantOrderStatus.OPEN);
+    expect(criteria.expiresAt).toBeDefined();
+    expect(patch).toEqual({ status: MerchantOrderStatus.EXPIRED });
+  });
+});
+
+describe('MerchantService.verifyKyb', () => {
+  it('marks a merchant verified', async () => {
+    const { service } = makeService({ merchant: makeMerchant({ kybStatus: 'pending' }) });
+    const result = await service.verifyKyb('merchant-1', 'verified');
+    expect(result.kybStatus).toBe('verified');
+  });
+
+  it('marks a merchant rejected', async () => {
+    const { service } = makeService();
+    const result = await service.verifyKyb('merchant-1', 'rejected');
+    expect(result.kybStatus).toBe('rejected');
+  });
+
+  it('rejects an unknown merchant', async () => {
+    const { service, merchantsRepo } = makeService();
+    merchantsRepo.findOne.mockResolvedValueOnce(null);
+    await expect(service.verifyKyb('missing', 'verified')).rejects.toThrow(NotFoundException);
   });
 });

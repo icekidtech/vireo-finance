@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, TextInput, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
 import { api } from '../api';
 import { approveAndSign, ensureDeviceRegistered } from '../lib/deviceKey';
@@ -17,6 +17,13 @@ export default function SettleScreen({ navigation }: SettleScreenProps) {
   const [biometric, setBiometric] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [kybStatus, setKybStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getMerchantProfile().then((p: any) => setKybStatus(p.kybStatus)).catch(() => {});
+  }, []);
+
+  const kybBlocked = kybStatus !== null && kybStatus !== 'verified';
 
   const startOver = () => {
     setStage('form');
@@ -111,6 +118,14 @@ export default function SettleScreen({ navigation }: SettleScreenProps) {
     <View style={styles.container}>
       <Text style={styles.title}>Settle to Bank</Text>
       {error && <Text style={styles.error}>{error}</Text>}
+      {kybBlocked && (
+        <View style={styles.kybBanner}>
+          <Text style={styles.kybText}>
+            Business verification is {kybStatus}. Settlements unlock once your business has been
+            verified.
+          </Text>
+        </View>
+      )}
       <Text style={styles.label}>Amount (NGN)</Text>
       <TextInput
         style={styles.input}
@@ -120,7 +135,7 @@ export default function SettleScreen({ navigation }: SettleScreenProps) {
         keyboardType="numeric"
         editable={!loading}
       />
-      <TouchableOpacity style={styles.primary} onPress={review} disabled={loading}>
+      <TouchableOpacity style={styles.primary} onPress={review} disabled={loading || kybBlocked}>
         <Text style={styles.primaryText}>{loading ? 'Preparing…' : 'Review settlement'}</Text>
       </TouchableOpacity>
       {loading && <ActivityIndicator size="small" style={styles.spinner} />}
@@ -151,6 +166,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: 'bold', marginBottom: 16 },
   error: { color: 'red', marginBottom: 12 },
   warn: { color: '#B26A00', fontSize: 13, marginBottom: 12 },
+  kybBanner: { backgroundColor: '#FFF4E0', borderRadius: 8, padding: 12, marginBottom: 12 },
+  kybText: { color: '#8A5A00', fontSize: 13 },
   label: { fontSize: 14, color: '#666', marginTop: 12, marginBottom: 4 },
   input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 16 },
   hint: { color: '#666', fontSize: 13, marginBottom: 16 },
