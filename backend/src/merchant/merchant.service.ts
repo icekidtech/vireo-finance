@@ -6,9 +6,12 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { AccountsService } from '../accounts/accounts.service';
+import { Challenge } from '../challenges/challenge.entity';
+import { ChallengesService } from '../challenges/challenges.service';
 import {
+  ChallengeType,
   HoldStatus,
   LedgerDirection,
   LedgerTransactionType,
@@ -20,7 +23,7 @@ import { formatMinor, parseAmountToMinor, assertPositive } from '../database/mon
 import { Hold } from '../ledger/hold.entity';
 import { LedgerService } from '../ledger/ledger.service';
 import { PagaService } from '../paga/paga.service';
-import { CreateOrderDto, OnboardMerchantDto } from './dto/merchant.dto';
+import { CreateOrderDto, CreateSettlementDraftDto, OnboardMerchantDto } from './dto/merchant.dto';
 import { Merchant } from './merchant.entity';
 import { MerchantOrder } from './merchant-order.entity';
 import { Settlement } from './settlement.entity';
@@ -36,6 +39,7 @@ export class MerchantService {
     @InjectRepository(Settlement) private readonly settlements: Repository<Settlement>,
     private readonly accounts: AccountsService,
     private readonly ledger: LedgerService,
+    private readonly challenges: ChallengesService,
     private readonly paga: PagaService,
   ) {}
 
@@ -162,11 +166,11 @@ export class MerchantService {
     };
   }
 
-  async settle(userId: string, amountInput?: string) {
+  async createSettlementDraft(userId: string, dto: CreateSettlementDraftDto) {
     const merchant = await this.getByOwner(userId);
     const account = await this.accounts.getMerchantAccount(merchant.id);
     const balance = await this.ledger.getBalance(account.id);
-    const amount = amountInput ? parseAmountToMinor(amountInput) : balance.available;
+    const amount = dto.amount ? parseAmountToMinor(dto.amount) : balance.available;
     assertPositive(amount);
 
     if (amount > balance.available) {
@@ -176,29 +180,95 @@ export class MerchantService {
       throw new BadRequestException('Merchant settlement bank details are not set');
     }
 
-    const settlement = await this.settlements.save(
-      this.settlements.create({
-        merchantId: merchant.id,
-        amount: amount.toString(),
-        status: SettlementStatus.PENDING,
-      }),
-    );
-
-    await this.ledger.runInTransaction(async (manager) => {
+    // Create the draft and reserve funds atomically under the account lock, so
+    // concurrent settlements cannot over-reserve or leave an orphaned draft.
+    const settlement = await this.ledger.runInTransaction(async (manager) => {
+      const saved = await manager.getRepository(Settlement).save(
+        manager.getRepository(Settlement).create({
+          merchantId: merchant.id,
+          amount: amount.toString(),
+          status: SettlementStatus.DRAFT,
+        }),
+      );
       await this.ledger.createHold(manager, {
         accountId: account.id,
         amount,
-        reference: `settlement:${settlement.id}`,
+        reference: `settlement:${saved.id}`,
       });
+      return saved;
     });
+
+    // Bind a device challenge to the draft. If the device is invalid the draft
+    // is failed and its hold released, so no funds stay reserved without a way
+    // to authorize the payout.
+    let challenge;
+    try {
+      challenge = await this.challenges.issue({
+        userId,
+        deviceId: dto.deviceId,
+        type: ChallengeType.SETTLEMENT,
+        payload: {
+          settlementId: settlement.id,
+          type: 'settlement',
+          amountMinor: settlement.amount,
+          currency: 'NGN',
+          bankCode: merchant.settlementBankCode,
+          accountNumber: merchant.settlementAccountNumber,
+          accountName: merchant.settlementAccountName ?? merchant.businessName,
+        },
+      });
+    } catch (error) {
+      await this.failSettlementById(settlement.id, 'Settlement challenge could not be issued');
+      throw error;
+    }
+
+    settlement.challengeId = challenge.id;
+    await this.settlements.save(settlement);
+
+    return { settlement: presentSettlement(settlement), challenge: presentChallenge(challenge) };
+  }
+
+  async submitSettlement(userId: string, settlementId: string, signature: string) {
+    const merchant = await this.getByOwner(userId);
+
+    // Consume the signed challenge and move DRAFT -> PENDING atomically. Paga is
+    // called only after the challenge is committed as used.
+    const settlement = await this.ledger.runInTransaction(async (manager) => {
+      const locked = await manager.getRepository(Settlement).findOne({
+        where: { id: settlementId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!locked || locked.merchantId !== merchant.id) {
+        throw new NotFoundException('Settlement not found');
+      }
+      if (
+        locked.status === SettlementStatus.PROCESSING ||
+        locked.status === SettlementStatus.COMPLETED
+      ) {
+        return locked;
+      }
+      if (locked.status !== SettlementStatus.DRAFT) {
+        throw new BadRequestException(`Settlement is ${locked.status}`);
+      }
+      if (!locked.challengeId) {
+        throw new BadRequestException('Settlement has no challenge');
+      }
+      await this.consumeForSettlement(manager, locked, userId, signature);
+      locked.status = SettlementStatus.PENDING;
+      return manager.getRepository(Settlement).save(locked);
+    });
+
+    if (settlement.status !== SettlementStatus.PENDING) {
+      return presentSettlement(settlement);
+    }
 
     let result;
     try {
       result = await this.paga.depositToBank({
-        amountMinor: amount,
+        amountMinor: BigInt(settlement.amount),
         reference: `settlement:${settlement.id}`,
-        bankCode: merchant.settlementBankCode,
-        accountNumber: merchant.settlementAccountNumber,
+        bankCode: merchant.settlementBankCode!,
+        accountNumber: merchant.settlementAccountNumber!,
         accountName: merchant.settlementAccountName ?? merchant.businessName,
         narration: 'Vireo merchant settlement',
       });
@@ -226,6 +296,34 @@ export class MerchantService {
     );
     const latest = await this.settlements.findOne({ where: { id: settlement.id } });
     return presentSettlement(latest ?? settlement);
+  }
+
+  private async consumeForSettlement(
+    manager: EntityManager,
+    settlement: Settlement,
+    userId: string,
+    signature: string,
+  ): Promise<void> {
+    const challenge = await manager.getRepository(Challenge).findOne({
+      where: { id: settlement.challengeId! },
+    });
+    if (!challenge) {
+      throw new NotFoundException('Challenge not found');
+    }
+    if (challenge.payload.settlementId !== settlement.id) {
+      throw new BadRequestException('Challenge is not bound to this settlement');
+    }
+    if (challenge.payload.amountMinor !== settlement.amount) {
+      throw new BadRequestException('Challenge amount does not match the settlement');
+    }
+
+    await this.challenges.consume(manager, {
+      challengeId: settlement.challengeId!,
+      userId,
+      type: ChallengeType.SETTLEMENT,
+      expectedPayload: challenge.payload,
+      signature,
+    });
   }
 
   async listSettlements(userId: string) {
@@ -384,5 +482,16 @@ export function presentSettlement(settlement: Settlement) {
     failureReason: settlement.failureReason,
     createdAt: settlement.createdAt,
     updatedAt: settlement.updatedAt,
+  };
+}
+
+function presentChallenge(challenge: Challenge) {
+  return {
+    id: challenge.id,
+    type: challenge.type,
+    nonce: challenge.nonce,
+    payload: challenge.payload,
+    payloadHash: challenge.payloadHash,
+    expiresAt: challenge.expiresAt,
   };
 }

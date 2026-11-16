@@ -1,7 +1,12 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CreateOrderDto, OnboardMerchantDto, SettleDto } from './dto/merchant.dto';
+import {
+  CreateOrderDto,
+  CreateSettlementDraftDto,
+  OnboardMerchantDto,
+  SubmitSettlementDto,
+} from './dto/merchant.dto';
 import { MerchantService } from './merchant.service';
 
 @UseGuards(JwtAuthGuard)
@@ -39,8 +44,20 @@ export class MerchantController {
     return this.merchants.listSettlements(user.userId);
   }
 
-  @Post('settlements')
-  settle(@CurrentUser() user: AuthenticatedUser, @Body() dto: SettleDto) {
-    return this.merchants.settle(user.userId, dto.amount);
+  @Post('settlements/drafts')
+  createSettlementDraft(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateSettlementDraftDto,
+  ) {
+    return this.merchants.createSettlementDraft(user.userId, dto);
+  }
+
+  @Post('settlements/:id/submit')
+  submitSettlement(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: SubmitSettlementDto,
+  ) {
+    return this.merchants.submitSettlement(user.userId, id, dto.signature);
   }
 }

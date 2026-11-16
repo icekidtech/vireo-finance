@@ -17,6 +17,8 @@ export default function SendScreen({ navigation }: SendScreenProps) {
   const [bankCode, setBankCode] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [orderReference, setOrderReference] = useState('');
+  const [order, setOrder] = useState<any>(null);
+  const [lookingUp, setLookingUp] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState(() => Crypto.randomUUID());
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,7 +41,39 @@ export default function SendScreen({ navigation }: SendScreenProps) {
     };
   }, []);
 
+  /** Fetch the order so the customer sees the business and exact amount before paying. */
+  const lookupOrder = async () => {
+    const reference = orderReference.trim();
+    if (!reference) {
+      setError('Enter the order reference first');
+      return;
+    }
+    setLookingUp(true);
+    setError(null);
+    setOrder(null);
+    try {
+      const data = await api.getMerchantOrder(reference);
+      if (data.status !== 'open') {
+        setError(`This order is ${data.status}`);
+        return;
+      }
+      if (data.expiresAt && new Date(data.expiresAt).getTime() <= Date.now()) {
+        setError('This order has expired');
+        return;
+      }
+      setOrder(data);
+    } catch (e: any) {
+      setError(e.response?.data?.message || 'Order not found');
+    } finally {
+      setLookingUp(false);
+    }
+  };
+
   const createDraft = async () => {
+    if (type === 'merchant' && !order) {
+      setError('Look up the order first');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -47,7 +81,8 @@ export default function SendScreen({ navigation }: SendScreenProps) {
       setDeviceId(id);
       const data = await api.createTransferDraft({
         type,
-        amount,
+        // The order amount is authoritative: the backend rejects any mismatch.
+        amount: type === 'merchant' ? order.amount : amount,
         idempotencyKey,
         deviceId: id,
         ...(type === 'internal'
@@ -56,7 +91,7 @@ export default function SendScreen({ navigation }: SendScreenProps) {
             : { recipientPhone: recipient }
           : {}),
         ...(type === 'bank' ? { bankCode, accountNumber } : {}),
-        ...(type === 'merchant' ? { orderReference } : {}),
+        ...(type === 'merchant' ? { orderReference: order.reference } : {}),
       });
       setDraft(data);
     } catch (e: any) {
@@ -90,6 +125,7 @@ export default function SendScreen({ navigation }: SendScreenProps) {
   const startOver = () => {
     setDraft(null);
     setSent(null);
+    setOrder(null);
     setError(null);
     setIdempotencyKey(Crypto.randomUUID());
   };
@@ -123,15 +159,23 @@ export default function SendScreen({ navigation }: SendScreenProps) {
               <TouchableOpacity
                 key={kind}
                 style={[styles.typeChip, type === kind && styles.typeChipActive]}
-                onPress={() => setType(kind)}
+                onPress={() => {
+                  setType(kind);
+                  setOrder(null);
+                  setError(null);
+                }}
               >
                 <Text style={type === kind ? styles.typeTextActive : styles.typeText}>{kind}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text style={styles.label}>Amount (NGN)</Text>
-          <TextInput style={styles.input} placeholder="0.00" value={amount} onChangeText={setAmount} keyboardType="numeric" />
+          {type !== 'merchant' && (
+            <>
+              <Text style={styles.label}>Amount (NGN)</Text>
+              <TextInput style={styles.input} placeholder="0.00" value={amount} onChangeText={setAmount} keyboardType="numeric" />
+            </>
+          )}
 
           {type === 'internal' && (
             <>
@@ -152,11 +196,35 @@ export default function SendScreen({ navigation }: SendScreenProps) {
           {type === 'merchant' && (
             <>
               <Text style={styles.label}>Merchant order reference</Text>
-              <TextInput style={styles.input} placeholder="ord_..." value={orderReference} onChangeText={setOrderReference} autoCapitalize="none" />
+              <TextInput
+                style={styles.input}
+                placeholder="ord_..."
+                value={orderReference}
+                onChangeText={(text) => {
+                  setOrderReference(text);
+                  setOrder(null);
+                }}
+                autoCapitalize="none"
+              />
+              {!order && (
+                <Button title="Look up order" onPress={lookupOrder} disabled={lookingUp || loading} />
+              )}
+              {lookingUp && <ActivityIndicator size="small" />}
+              {order && (
+                <View style={styles.orderCard}>
+                  <Text style={styles.orderMerchant}>{order.merchantName}</Text>
+                  <Text style={styles.orderAmount}>{order.currency} {order.amount}</Text>
+                  {order.note && <Text style={styles.hint}>{order.note}</Text>}
+                </View>
+              )}
             </>
           )}
 
-          <Button title="Review payment" onPress={createDraft} disabled={loading || !deviceId} />
+          <Button
+            title="Review payment"
+            onPress={createDraft}
+            disabled={loading || !deviceId || (type === 'merchant' && !order)}
+          />
           {!deviceId && !error && <Text style={styles.hint}>Registering this device…</Text>}
         </>
       ) : (
@@ -210,6 +278,9 @@ const styles = StyleSheet.create({
   typeChipActive: { backgroundColor: '#007AFF', borderColor: '#007AFF' },
   typeText: { color: '#333', fontSize: 14 },
   typeTextActive: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  orderCard: { backgroundColor: '#f5f5f5', borderRadius: 12, padding: 16, marginTop: 12 },
+  orderMerchant: { fontSize: 18, fontWeight: '600' },
+  orderAmount: { fontSize: 26, fontWeight: 'bold', marginTop: 4 },
   confirmAmount: { fontSize: 30, fontWeight: 'bold', marginTop: 8 },
   confirmLine: { fontSize: 16, color: '#333', marginTop: 6 },
   link: { marginTop: 16, alignItems: 'center' },

@@ -65,6 +65,11 @@ function balanceFromNet(accountType: AccountType, netCreditMinusDebit: bigint): 
   return isDebitNormal(accountType) ? -netCreditMinusDebit : netCreditMinusDebit;
 }
 
+/**
+ * Balance-space delta: an entry in the account's normal direction increases
+ * its balance. `net` itself stays credit-minus-debit in the stored entries;
+ * balanceFromNet applies the debit-normal flip when reading it back.
+ */
 function signedDelta(accountType: AccountType, direction: LedgerDirection, amount: bigint): bigint {
   return direction === normalDirection(accountType) ? amount : -amount;
 }

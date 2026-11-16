@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Length, Matches, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUUID, Length, Matches, Min } from 'class-validator';
 
 const AMOUNT_PATTERN = /^\d{1,15}(\.\d{1,2})?$/;
 const HANDLE_PATTERN = /^[a-zA-Z0-9_]{3,60}$/;
@@ -44,9 +44,18 @@ export class CreateOrderDto {
   expiresInSeconds?: number;
 }
 
-export class SettleDto {
+export class CreateSettlementDraftDto {
   @IsOptional()
   @IsString()
-  @Matches(AMOUNT_PATTERN)
+  @Matches(AMOUNT_PATTERN, { message: 'amount must be a positive decimal with up to 2 places' })
   amount?: string;
+
+  @IsUUID()
+  deviceId: string;
+}
+
+export class SubmitSettlementDto {
+  @IsString()
+  @Length(1, 512)
+  signature: string;
 }

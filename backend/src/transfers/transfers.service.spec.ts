@@ -64,6 +64,7 @@ describe('TransfersService lockDraft validation', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
     );
   }
 

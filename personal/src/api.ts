@@ -66,6 +66,12 @@ export class VireoApi {
     return data;
   }
 
+  /** Look up a merchant payment order by reference before paying it. */
+  async getMerchantOrder(reference: string) {
+    const { data } = await this.client.get(`/merchant-orders/${reference}`);
+    return data;
+  }
+
   async createTransferDraft(payload: {
     type: 'internal' | 'bank' | 'merchant';
     amount: string;

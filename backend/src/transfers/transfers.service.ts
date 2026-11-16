@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -29,6 +30,7 @@ import { Hold } from '../ledger/hold.entity';
 import { LedgerService } from '../ledger/ledger.service';
 import { Merchant } from '../merchant/merchant.entity';
 import { MerchantOrder } from '../merchant/merchant-order.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PagaService } from '../paga/paga.service';
 import { RiskService } from '../risk/risk.service';
 import { User } from '../users/user.entity';
@@ -39,6 +41,8 @@ const BANK_TRANSFER_FEE_MINOR = 10000n;
 
 @Injectable()
 export class TransfersService {
+  private readonly logger = new Logger(TransfersService.name);
+
   constructor(
     @InjectRepository(Transfer) private readonly transfers: Repository<Transfer>,
     @InjectRepository(User) private readonly users: Repository<User>,
@@ -49,6 +53,7 @@ export class TransfersService {
     private readonly challenges: ChallengesService,
     private readonly risk: RiskService,
     private readonly paga: PagaService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async createDraft(
@@ -270,7 +275,7 @@ export class TransfersService {
   }
 
   private async executeMerchant(userId: string, transferId: string, signature: string) {
-    const transfer = await this.ledger.runInTransaction(async (manager) => {
+    const { transfer, merchantId } = await this.ledger.runInTransaction(async (manager) => {
       const locked = await this.lockDraft(manager, userId, transferId);
       const orderReference = locked.metadata?.orderReference as string | undefined;
       if (!orderReference) {
@@ -317,10 +322,40 @@ export class TransfersService {
       await manager.getRepository(MerchantOrder).save(order);
 
       locked.status = TransferStatus.COMPLETED;
-      return manager.getRepository(Transfer).save(locked);
+      const saved = await manager.getRepository(Transfer).save(locked);
+      return { transfer: saved, merchantId: order.merchantId };
     });
 
+    // Best-effort after commit: a notification failure must never fail a payment.
+    await this.notifyMerchantPaid(merchantId, transfer);
     return { transfer: presentTransfer(transfer) };
+  }
+
+  private async notifyMerchantPaid(merchantId: string, transfer: Transfer): Promise<void> {
+    try {
+      const merchant = await this.merchants.findOne({ where: { id: merchantId } });
+      if (!merchant?.ownerUserId) {
+        return;
+      }
+      const orderReference = transfer.metadata?.orderReference as string | undefined;
+      await this.notifications.send(
+        merchant.ownerUserId,
+        'Payment received',
+        `You received NGN ${formatMinor(BigInt(transfer.amount))}${
+          orderReference ? ` for order ${orderReference}` : ''
+        }.`,
+        [
+          { type: 'sms', enabled: true },
+          { type: 'push', enabled: true },
+          { type: 'in_app', enabled: true },
+        ],
+        { kind: 'merchant_payment', transferId: transfer.id, orderReference },
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Merchant payment notification failed for transfer=${transfer.id}: ${String(error)}`,
+      );
+    }
   }
 
   private async executeBank(userId: string, transferId: string, signature: string) {

@@ -61,16 +61,22 @@ function mockEntityManager(
     return [];
   });
 
-  const getRepository = jest.fn(() => ({
+  const savedEntries: Array<{ accountId: string; direction: string; amount: string }> = [];
+  const repository = {
     findOne: jest.fn(),
-    findOneOrFail: jest.fn(),
-    save: jest.fn(async (dto: any) => dto),
+    findOneOrFail: jest.fn(async () => ({ id: 'txn-1' })),
+    save: jest.fn(async (dto: any) => {
+      if (Array.isArray(dto)) savedEntries.push(...dto);
+      return dto;
+    }),
     create: jest.fn((dto: any) => dto),
-  }));
+  };
+  const getRepository = jest.fn(() => repository);
 
   return {
     query,
     getRepository,
+    savedEntries,
     transaction: jest.fn(async (work: any) => work(mockEntityManager(accounts, entries, holds))),
   } as unknown;
 }
@@ -180,6 +186,108 @@ describe('LedgerService', () => {
       expect(balance.balance).toBe(50000n);
       expect(balance.held).toBe(10000n);
       expect(balance.available).toBe(40000n);
+    });
+  });
+
+  describe('Paga pool (debit-normal)', () => {
+    const POOL = 'pool-1';
+
+    /** Debit-normal balance: debits minus credits. */
+    function poolDelta(entries: Array<{ accountId: string; direction: string; amount: string }>): bigint {
+      return entries
+        .filter((e) => e.accountId === POOL)
+        .reduce((acc, e) => acc + (e.direction === 'debit' ? BigInt(e.amount) : -BigInt(e.amount)), 0n);
+    }
+
+    it('accepts the first inbound credit on a fresh database and grows the pool', async () => {
+      const pool = makeAccount({ id: POOL, accountType: AccountType.PAGA_POOL });
+      const wallet = makeAccount({ id: 'wallet-1' });
+      const manager = mockEntityManager([pool, wallet]);
+      const service = new LedgerService({ query: manager.query } as any);
+
+      await service.post(manager, {
+        idempotencyKey: 'paga-event:evt-1',
+        type: LedgerTransactionType.INBOUND_CREDIT,
+        reference: 'evt-1',
+        legs: [
+          { accountId: POOL, direction: LedgerDirection.DEBIT, amount: 25000n },
+          { accountId: 'wallet-1', direction: LedgerDirection.CREDIT, amount: 25000n },
+        ],
+      });
+
+      const posted: Array<{ accountId: string; direction: string; amount: string }> = manager.savedEntries;
+      expect(poolDelta(posted)).toBe(25000n);
+      const walletNet = posted
+        .filter((e) => e.accountId === 'wallet-1')
+        .reduce((acc, e) => acc + (e.direction === 'credit' ? BigInt(e.amount) : -BigInt(e.amount)), 0n);
+      expect(walletNet).toBe(25000n);
+    });
+
+    it('shrinks the pool when a bank payout leaves Paga', async () => {
+      const pool = makeAccount({ id: POOL, accountType: AccountType.PAGA_POOL });
+      const wallet = makeAccount({ id: 'wallet-1' });
+      // History: a 25000 inbound credit already landed (pool debit, wallet credit).
+      const history = [
+        { accountId: POOL, direction: 'debit' as const, amount: 25000n },
+        { accountId: 'wallet-1', direction: 'credit' as const, amount: 25000n },
+      ];
+      const manager = mockEntityManager([pool, wallet], history);
+      const service = new LedgerService({ query: manager.query } as any);
+
+      await service.post(manager, {
+        idempotencyKey: 'transfer:t-1',
+        type: LedgerTransactionType.BANK_TRANSFER,
+        reference: 't-1',
+        legs: [
+          { accountId: 'wallet-1', direction: LedgerDirection.DEBIT, amount: 25000n },
+          { accountId: POOL, direction: LedgerDirection.CREDIT, amount: 25000n },
+        ],
+      });
+
+      expect(25000n + poolDelta(manager.savedEntries)).toBe(0n);
+    });
+
+    it('rejects a payout larger than the funds held at Paga', async () => {
+      const pool = makeAccount({ id: POOL, accountType: AccountType.PAGA_POOL });
+      const wallet = makeAccount({ id: 'wallet-1' });
+      // Fixture isolates the pool's own guard: pool holds 1000, wallet 50000.
+      const history = [
+        { accountId: POOL, direction: 'debit' as const, amount: 1000n },
+        { accountId: 'wallet-1', direction: 'credit' as const, amount: 50000n },
+      ];
+      const manager = mockEntityManager([pool, wallet], history);
+      const service = new LedgerService({ query: manager.query } as any);
+
+      await expect(
+        service.post(manager, {
+          idempotencyKey: 'transfer:t-2',
+          type: LedgerTransactionType.BANK_TRANSFER,
+          reference: 't-2',
+          legs: [
+            { accountId: 'wallet-1', direction: LedgerDirection.DEBIT, amount: 5000n },
+            { accountId: POOL, direction: LedgerDirection.CREDIT, amount: 5000n },
+          ],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('reports a positive pool balance from a negative net', async () => {
+      const manager = mockEntityManager([]);
+      manager.query.mockResolvedValueOnce([
+        {
+          id: POOL,
+          accountType: AccountType.PAGA_POOL,
+          currency: 'NGN',
+          net: '-25000',
+          held: '0',
+        },
+      ]);
+      const service = new LedgerService({ query: manager.query } as any);
+
+      const balance = await service.getBalance(POOL);
+
+      expect(balance.balance).toBe(25000n);
+      expect(balance.available).toBe(25000n);
     });
   });
 });

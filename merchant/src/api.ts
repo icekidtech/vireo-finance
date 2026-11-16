@@ -76,13 +76,24 @@ export class VireoApi {
     return data;
   }
 
+  /** Public order lookup by reference — also used to poll for payment. */
+  async getOrder(reference: string) {
+    const { data } = await this.client.get(`/merchant-orders/${reference}`);
+    return data;
+  }
+
   async listOrders() {
     const { data } = await this.client.get('/merchants/orders');
     return data;
   }
 
-  async settle(amount?: string) {
-    const { data } = await this.client.post('/merchants/settlements', { amount });
+  async createSettlementDraft(deviceId: string, amount?: string) {
+    const { data } = await this.client.post('/merchants/settlements/drafts', { amount, deviceId });
+    return data;
+  }
+
+  async submitSettlement(settlementId: string, signature: string) {
+    const { data } = await this.client.post(`/merchants/settlements/${settlementId}/submit`, { signature });
     return data;
   }
 

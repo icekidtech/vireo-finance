@@ -101,6 +101,7 @@ export enum MerchantOrderStatus {
 }
 
 export enum SettlementStatus {
+  DRAFT = 'draft',
   PENDING = 'pending',
   PROCESSING = 'processing',
   COMPLETED = 'completed',
