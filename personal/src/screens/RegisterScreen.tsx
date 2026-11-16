@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { View, Text, TextInput, Button, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
-import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
+import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../navigation';
 
-type ScreenProps = { navigation: any };
+type ScreenProps = StackScreenProps<RootStackParamList, 'Register'>;
 
 export default function RegisterScreen({ navigation }: ScreenProps) {
   const [phone, setPhone] = useState('');
@@ -11,18 +12,15 @@ export default function RegisterScreen({ navigation }: ScreenProps) {
   const [handle, setHandle] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { login } = useAuth();
 
   const onRegister = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.register(phone, name, handle || undefined);
-      if (data.token) {
-        login(data.token, data.user);
-      } else {
-        setError('Registration failed');
-      }
+      // Registration only creates the account. Ownership of the phone number is
+      // proven by the OTP step, which is what issues the access token.
+      await api.register(phone, name, handle || undefined);
+      navigation.navigate('OtpVerify', { phone });
     } catch (e: any) {
       setError(e.response?.data?.message || 'Registration failed');
     } finally {
@@ -55,7 +53,7 @@ export default function RegisterScreen({ navigation }: ScreenProps) {
       />
       <Button title="Register" onPress={onRegister} disabled={loading} />
       {loading && <ActivityIndicator size="small" />}
-      <TouchableOpacity style={styles.link} onPress={() => navigation.goBack()}>
+      <TouchableOpacity style={styles.link} onPress={() => navigation.navigate('OtpVerify')}>
         <Text style={styles.linkText}>Already have an account? Verify OTP</Text>
       </TouchableOpacity>
     </View>

@@ -3,11 +3,9 @@ import { View, Text, FlatList, ActivityIndicator, StyleSheet, TouchableOpacity }
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../navigation';
 
-type OrdersScreenProps = StackScreenProps<{
-  Dashboard: undefined;
-  Orders: undefined;
-}, 'Orders'>;
+type OrdersScreenProps = StackScreenProps<RootStackParamList, 'Orders'>;
 
 export default function OrdersScreen({ navigation }: OrdersScreenProps) {
   const [orders, setOrders] = useState<any[]>([]);

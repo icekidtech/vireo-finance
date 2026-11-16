@@ -45,6 +45,10 @@ export class MerchantService {
     if (existing) {
       throw new ConflictException('Merchant handle is already taken');
     }
+    const owned = await this.merchants.findOne({ where: { ownerUserId: userId } });
+    if (owned) {
+      throw new ConflictException('This account already has a merchant profile');
+    }
 
     const merchant = await this.dataSource.transaction(async (manager) => {
       const saved = await manager.getRepository(Merchant).save(
@@ -55,6 +59,7 @@ export class MerchantService {
           kybStatus: 'pending',
           settlementBankCode: dto.settlementBankCode ?? null,
           settlementAccountNumber: dto.settlementAccountNumber ?? null,
+          settlementAccountName: dto.settlementAccountName ?? null,
           status: 'active',
         }),
       );

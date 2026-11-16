@@ -21,6 +21,11 @@ export class OnboardMerchantDto {
   @IsString()
   @Length(6, 32)
   settlementAccountNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(2, 120)
+  settlementAccountName?: string;
 }
 
 export class CreateOrderDto {

@@ -4,11 +4,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import QRCode from 'react-native-qrcode-svg';
 import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../navigation';
 
-type CreateOrderScreenProps = StackScreenProps<{
-  Dashboard: undefined;
-  CreateOrder: undefined;
-}, 'CreateOrder'>;
+type CreateOrderScreenProps = StackScreenProps<RootStackParamList, 'CreateOrder'>;
 
 export default function CreateOrderScreen({ navigation }: CreateOrderScreenProps) {
   const [amount, setAmount] = useState('');

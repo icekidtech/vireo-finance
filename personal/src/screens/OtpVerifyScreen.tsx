@@ -1,28 +1,46 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, TextInput, Button, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
+import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../navigation';
 
-type ScreenProps = { navigation: any };
+type ScreenProps = StackScreenProps<RootStackParamList, 'OtpVerify'>;
 
-export default function OtpVerifyScreen({ navigation }: ScreenProps) {
-  const [phone, setPhone] = useState('');
+export default function OtpVerifyScreen({ navigation, route }: ScreenProps) {
+  const initialPhone: string = route.params?.phone ?? '';
+  const [phone, setPhone] = useState(initialPhone);
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [devCode, setDevCode] = useState<string | null>(null);
   const { login } = useAuth();
 
-  const requestOtp = async () => {
+  const requestOtp = async (target?: string) => {
+    const number = target ?? phone;
+    if (!number) {
+      setError('Enter your phone number first');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      await api.requestOtp(phone);
+      const data = await api.requestOtp(number);
+      // Non-production builds return the code so the flow is testable without SMS.
+      setDevCode(data?.devCode ?? null);
     } catch (e: any) {
       setError(e.response?.data?.message || 'Failed to send OTP');
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (initialPhone) {
+      void requestOtp(initialPhone);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const verifyOtp = async () => {
     setLoading(true);
@@ -52,7 +70,8 @@ export default function OtpVerifyScreen({ navigation }: ScreenProps) {
         onChangeText={setPhone}
         autoCapitalize="none"
       />
-      <Button title="Send OTP" onPress={requestOtp} disabled={loading} />
+      <Button title="Send OTP" onPress={() => requestOtp()} disabled={loading} />
+      {devCode && <Text style={styles.hint}>Dev code: {devCode}</Text>}
       <TextInput
         style={styles.input}
         placeholder="6-digit code"
@@ -63,7 +82,7 @@ export default function OtpVerifyScreen({ navigation }: ScreenProps) {
       />
       <Button title="Verify" onPress={verifyOtp} disabled={loading} />
       {loading && <ActivityIndicator size="small" />}
-      <TouchableOpacity style={styles.link} onPress={() => navigation.goBack()}>
+      <TouchableOpacity style={styles.link} onPress={() => navigation.navigate('Register')}>
         <Text style={styles.linkText}>Need to register?</Text>
       </TouchableOpacity>
     </View>
@@ -74,6 +93,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 24, justifyContent: 'center' },
   title: { fontSize: 24, fontWeight: 'bold', marginBottom: 24, textAlign: 'center' },
   error: { color: 'red', marginBottom: 12, textAlign: 'center' },
+  hint: { color: '#888', marginBottom: 12, textAlign: 'center', fontSize: 13 },
   input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 16 },
   link: { marginTop: 16, alignItems: 'center' },
   linkText: { color: '#007AFF', fontSize: 14 },

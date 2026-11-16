@@ -1,33 +1,56 @@
-import { useEffect, useState } from 'react';
-import { View, Text, Button, TouchableOpacity, ActivityIndicator, StyleSheet, FlatList } from 'react-native';
+import { useCallback, useState } from 'react';
+import { View, Text, Button, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../navigation';
 
-type DashboardScreenProps = StackScreenProps<{
-  Dashboard: undefined;
-  CreateOrder: undefined;
-  Orders: undefined;
-  Settle: undefined;
-}, 'Dashboard'>;
+type DashboardScreenProps = StackScreenProps<RootStackParamList, 'Dashboard'>;
 
 export default function DashboardScreen({ navigation }: DashboardScreenProps) {
+  const { logout } = useAuth();
   const [balance, setBalance] = useState<{ available: string; held: string; currency: string } | null>(null);
   const [salesToday, setSalesToday] = useState<{ amount: string; count: number } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    api.getDashboard().then((data: any) => {
-      setBalance(data.balance);
-      setSalesToday(data.salesToday);
-    }).finally(() => setLoading(false));
-  }, []);
+  // Refresh on focus so a payment committed on the customer's phone shows up
+  // here without restarting the app.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      setLoading(true);
+      api
+        .getDashboard()
+        .then((data: any) => {
+          if (!cancelled) {
+            setBalance(data.balance);
+            setSalesToday(data.salesToday);
+            setError(null);
+          }
+        })
+        .catch((e: any) => {
+          if (!cancelled) setError(e.response?.data?.message || 'Could not load your dashboard');
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Merchant Dashboard</Text>
       {loading ? (
         <ActivityIndicator size="large" />
+      ) : error ? (
+        <View style={styles.card}>
+          <Text style={styles.error}>{error}</Text>
+        </View>
       ) : (
         <>
           <View style={styles.card}>
@@ -47,6 +70,9 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
           </View>
         </>
       )}
+      <TouchableOpacity style={styles.link} onPress={logout}>
+        <Text style={styles.linkText}>Sign out</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -59,4 +85,7 @@ const styles = StyleSheet.create({
   cardAmount: { fontSize: 22, fontWeight: 'bold' },
   cardHeld: { fontSize: 12, color: '#888', marginTop: 4 },
   actions: { gap: 10 },
+  error: { color: 'red', fontSize: 14 },
+  link: { marginTop: 20, alignItems: 'center' },
+  linkText: { color: '#007AFF', fontSize: 14 },
 });

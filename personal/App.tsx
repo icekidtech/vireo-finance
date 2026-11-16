@@ -9,9 +9,10 @@ import WalletScreen from './src/screens/WalletScreen';
 import SendScreen from './src/screens/SendScreen';
 import TransactionsScreen from './src/screens/TransactionsScreen';
 import KycScreen from './src/screens/KycScreen';
-import { View, Text, Button, ActivityIndicator } from 'react-native';
+import type { RootStackParamList } from './src/navigation';
+import { View, ActivityIndicator } from 'react-native';
 
-const Stack = createStackNavigator();
+const Stack = createStackNavigator<RootStackParamList>();
 
 function AppNavigator() {
   const { token, isLoading } = useAuth();

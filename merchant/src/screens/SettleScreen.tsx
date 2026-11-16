@@ -3,11 +3,9 @@ import { View, Text, TextInput, Button, ActivityIndicator, StyleSheet, Touchable
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../navigation';
 
-type SettleScreenProps = StackScreenProps<{
-  Dashboard: undefined;
-  Settle: undefined;
-}, 'Settle'>;
+type SettleScreenProps = StackScreenProps<RootStackParamList, 'Settle'>;
 
 export default function SettleScreen({ navigation }: SettleScreenProps) {
   const [amount, setAmount] = useState('');

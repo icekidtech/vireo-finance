@@ -55,21 +55,30 @@ export class VireoApi {
     return data;
   }
 
+  /** Wallet id, balance and dedicated virtual account number for the caller. */
+  async getMyAccount() {
+    const { data } = await this.client.get('/accounts/me');
+    return data;
+  }
+
   async getTransactions(limit = 50) {
     const { data } = await this.client.get('/transfers', { params: { limit } });
     return data;
   }
 
-  async createTransferDraft(type: string, amount: string, idempotencyKey: string, deviceId: string, recipientPhone?: string, recipientHandle?: string, recipientUserId?: string) {
-    const { data } = await this.client.post('/transfers/drafts', {
-      type,
-      amount,
-      idempotencyKey,
-      deviceId,
-      recipientPhone,
-      recipientHandle,
-      recipientUserId,
-    });
+  async createTransferDraft(payload: {
+    type: 'internal' | 'bank' | 'merchant';
+    amount: string;
+    idempotencyKey: string;
+    deviceId: string;
+    recipientPhone?: string;
+    recipientHandle?: string;
+    recipientUserId?: string;
+    bankCode?: string;
+    accountNumber?: string;
+    orderReference?: string;
+  }) {
+    const { data } = await this.client.post('/transfers/drafts', payload);
     return data;
   }
 

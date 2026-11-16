@@ -1,13 +1,11 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Button, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, TextInput, Button, ActivityIndicator, TouchableOpacity, StyleSheet } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../navigation';
 
-type KycScreenProps = StackScreenProps<{
-  Wallet: undefined;
-  Kyc: undefined;
-}, 'Kyc'>;
+type KycScreenProps = StackScreenProps<RootStackParamList, 'Kyc'>;
 
 export default function KycScreen({ navigation }: KycScreenProps) {
   const [provider, setProvider] = useState('');

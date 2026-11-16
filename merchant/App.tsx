@@ -8,9 +8,10 @@ import DashboardScreen from './src/screens/DashboardScreen';
 import CreateOrderScreen from './src/screens/CreateOrderScreen';
 import OrdersScreen from './src/screens/OrdersScreen';
 import SettleScreen from './src/screens/SettleScreen';
+import type { RootStackParamList } from './src/navigation';
 import { View, ActivityIndicator } from 'react-native';
 
-const Stack = createStackNavigator();
+const Stack = createStackNavigator<RootStackParamList>();
 
 function AppNavigator() {
   const { token, isLoading } = useAuth();
