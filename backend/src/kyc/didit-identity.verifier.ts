@@ -48,6 +48,12 @@ export class DiditIdentityVerifier implements IdentityVerifier {
     body.append('user_image', imageBlob(selfie), 'selfie.jpg');
     body.append('save_api_request', 'false');
     const res = await this.client.postForm<LivenessResponse>('passive-liveness', body);
+    
+    // DEBUG: Log liveness response
+    console.log('=== DIDIT LIVENESS RESPONSE ===');
+    console.log('Full response:', JSON.stringify(res, null, 2));
+    console.log('================================');
+    
     const l = res.liveness;
     if (!l || typeof l.status !== 'string') {
       throw new ServiceUnavailableException('Identity verification is not available right now');
@@ -102,13 +108,46 @@ export class DiditIdentityVerifier implements IdentityVerifier {
 
   /** A pass needs this service to answer MATCH (an identity, name and date of birth match). */
   private matched(res: DatabaseValidationResponse, serviceId: string): boolean {
-    const validations = res.database_validation?.validations;
-    if (!Array.isArray(validations)) {
+    // DEBUG: Log the full response to understand what Didit is returning
+    console.log('=== DIDIT DATABASE VALIDATION RESPONSE ===');
+    console.log('Full response:', JSON.stringify(res, null, 2));
+    console.log('Service ID looking for:', serviceId);
+    
+    // NEW API FORMAT: Check if validations is an object (new format)
+    const validation = res.database_validation;
+    if (!validation) {
+      console.log('ERROR: database_validation is missing');
       throw new ServiceUnavailableException('Identity verification is not available right now');
     }
+    
+    // Check if the requested service was used
+    const servicesUsed = (validation as any).services_used;
+    if (Array.isArray(servicesUsed) && servicesUsed.includes(serviceId)) {
+      const matchType = (validation as any).match_type;
+      console.log('Match type:', matchType);
+      console.log('Match result:', matchType === 'full_match');
+      console.log('==========================================');
+      return matchType === 'full_match';
+    }
+    
+    // OLD API FORMAT: Fall back to array-based validation
+    const validations = validation.validations;
+    console.log('Validations:', JSON.stringify(validations, null, 2));
+    
+    if (!Array.isArray(validations)) {
+      console.log('ERROR: validations is not an array (trying new format above)');
+      throw new ServiceUnavailableException('Identity verification is not available right now');
+    }
+    
     const result = (validations as { service_id?: string; outcome_code?: string }[]).find(
       (v) => v.service_id === serviceId,
     );
+    
+    console.log('Found result:', JSON.stringify(result, null, 2));
+    console.log('Outcome code:', result?.outcome_code);
+    console.log('Match result:', result?.outcome_code === 'MATCH');
+    console.log('==========================================');
+    
     return result?.outcome_code === 'MATCH';
   }
 
