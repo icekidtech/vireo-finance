@@ -16,6 +16,8 @@ export function buildDataSourceOptions(config: ConfigService): DataSourceOptions
     entities: [__dirname + '/../**/*.entity{.ts,.js}'],
     migrations: [__dirname + '/../migrations/*{.ts,.js}'],
     migrationsTableName: 'schema_migrations',
+    // Some migrations (enum ADD VALUE) must run outside a transaction.
+    migrationsTransactionMode: 'each',
     synchronize: false,
     logging: ['error', 'warn', 'migration'],
   };
