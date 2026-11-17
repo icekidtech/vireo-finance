@@ -19,7 +19,8 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
   const [stage, setStage] = useState<Stage>(mode ? 'account' : 'welcome');
   const [isSignIn, setIsSignIn] = useState(mode === 'signin');
   const [phone, setPhone] = useState('');
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [code, setCode] = useState('');
   const [token, setToken] = useState('');
   const [businessName, setBusinessName] = useState('');
@@ -48,7 +49,7 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
   const onRegister = () =>
     guard(async () => {
       // Registration creates the account only; the OTP proves phone ownership.
-      await api.register(phone.trim(), name.trim());
+      await api.register(phone.trim(), `${firstName.trim()} ${lastName.trim()}`);
       await sendCode();
     }, 'Could not create your account');
 
@@ -137,11 +138,16 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
             <>
               <Text style={styles.title}>{isSignIn ? 'Welcome back' : 'Your details'}</Text>
               <Field label="PHONE" placeholder="+2348012345678" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoCapitalize="none" />
-              {!isSignIn && <Field label="FULL NAME" placeholder="Ada Okafor" value={name} onChangeText={setName} />}
+              {!isSignIn && (
+                <>
+                  <Field label="FIRST NAME" placeholder="Ada" value={firstName} onChangeText={setFirstName} autoCapitalize="words" autoComplete="given-name" hint="Use your name as it appears on your BVN, so verification is quick." />
+                  <Field label="LAST NAME" placeholder="Okafor" value={lastName} onChangeText={setLastName} autoCapitalize="words" autoComplete="family-name" />
+                </>
+              )}
               <Button
                 title={isSignIn ? 'Send code' : 'Continue'}
                 loading={loading}
-                disabled={!phone.trim() || (!isSignIn && !name.trim())}
+                disabled={!phone.trim() || (!isSignIn && (!firstName.trim() || !lastName.trim()))}
                 onPress={isSignIn ? onSignIn : onRegister}
               />
             </>

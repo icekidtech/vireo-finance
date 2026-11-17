@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Text, StyleSheet, View } from 'react-native';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
-import { errorMessage } from '../lib/format';
+import { useAuth } from '../contexts/AuthContext';
+import { errorMessage, splitFullName } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
 import type { VerificationOutcome } from '../types';
 import type { RootStackParamList } from '../navigation';
@@ -37,8 +38,10 @@ export default function VerifyScreen({ navigation }: Props) {
     const [kyc, merchant] = await Promise.all([api.getKycStatus(), api.getMerchantProfile()]);
     return { kyc, merchant };
   }, 'Could not load your verification status');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  // Pre-filled from the name given at signup; still editable, since the BVN record must match exactly.
+  const { user } = useAuth();
+  const [firstName, setFirstName] = useState(() => splitFullName(user?.name).firstName);
+  const [lastName, setLastName] = useState(() => splitFullName(user?.name).lastName);
   const [dob, setDob] = useState('');
   const [bvn, setBvn] = useState('');
   const [busy, setBusy] = useState(false);
@@ -81,7 +84,7 @@ export default function VerifyScreen({ navigation }: Props) {
       <ErrorBanner message={error ?? actionError} />
 
       <Card>
-        <ListRow title="Your identity" trailing={<StatusPill status={identityDone ? 'verified' : 'pending'} />} />
+        <ListRow title="Your identity" trailing={<StatusPill status={identityDone ? 'verified' : (kyc?.status ?? 'not_started')} />} />
         <ListRow title="Business" trailing={<StatusPill status={String(kyb)} />} />
         {kyc?.bvnLast4 ? <ListRow title="BVN" trailing={`•••••••${kyc.bvnLast4}`} /> : null}
       </Card>

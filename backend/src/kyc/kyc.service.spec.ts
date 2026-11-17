@@ -161,7 +161,7 @@ describe('KycService', () => {
   });
 
   describe('getUserKycStatus', () => {
-    it('returns default pending status when no KYC record exists', async () => {
+    it('reports not_started when no KYC record exists', async () => {
       const user = { id: 'user-1', kycTier: 0 };
       usersRepo.findOne.mockResolvedValue(user);
       kycRecordsRepo.findOne.mockResolvedValue(null);
@@ -169,7 +169,7 @@ describe('KycService', () => {
       const result = await service.getUserKycStatus('user-1');
 
       expect(result.kycTier).toBe(0);
-      expect(result.status).toBe(KycStatus.PENDING);
+      expect(result.status).toBe('not_started');
     });
 
     it('throws when user not found', async () => {

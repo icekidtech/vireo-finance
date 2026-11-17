@@ -93,7 +93,7 @@ export interface Device {
 export interface KycState {
   userId: string;
   kycTier: number;
-  status: KycStatus;
+  status: KycStatus | 'not_started';
   /** Whether automatic BVN verification is configured on the server. */
   bvnAvailable: boolean;
   bvnLast4: string | null;

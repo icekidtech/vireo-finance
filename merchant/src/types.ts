@@ -29,7 +29,7 @@ export interface Merchant {
 export interface KycState {
   userId: string;
   kycTier: number;
-  status: 'pending' | 'verified' | 'rejected';
+  status: 'not_started' | 'pending' | 'verified' | 'rejected';
   bvnAvailable: boolean;
   bvnLast4: string | null;
 }

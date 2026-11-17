@@ -77,3 +77,9 @@ export function groupAmountInput(amount: string): string {
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return rest.length ? `${grouped}.${rest.join('')}` : grouped;
 }
+
+/** "Ada Obi Okafor" -> first "Ada", last "Obi Okafor". A single name leaves the last name empty. */
+export function splitFullName(fullName: string | null | undefined): { firstName: string; lastName: string } {
+  const parts = (fullName ?? '').trim().split(/\s+/).filter(Boolean);
+  return { firstName: parts[0] ?? '', lastName: parts.slice(1).join(' ') };
+}

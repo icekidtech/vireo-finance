@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Text, StyleSheet, View } from 'react-native';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
-import { errorMessage } from '../lib/format';
+import { useAuth } from '../contexts/AuthContext';
+import { errorMessage, splitFullName } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
 import type { RootStackParamList } from '../navigation';
 import { Button, Card, ErrorBanner, Field, Header, ListRow, Loading, NoticeBanner, Screen, StatusPill } from '../components/ui';
@@ -20,8 +21,10 @@ function formatDob(raw: string): string {
 
 export default function KycScreen({ navigation }: Props) {
   const { data, loading, error, refreshing, refresh } = useLoad(() => api.getKycStatus(), 'Could not load verification status');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  // Pre-filled from the name given at signup; still editable, since the BVN record must match exactly.
+  const { user } = useAuth();
+  const [firstName, setFirstName] = useState(() => splitFullName(user?.name).firstName);
+  const [lastName, setLastName] = useState(() => splitFullName(user?.name).lastName);
   const [dob, setDob] = useState('');
   const [bvn, setBvn] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -67,7 +70,7 @@ export default function KycScreen({ navigation }: Props) {
       ) : (
         <View style={{ marginTop: spacing.lg }}>
           <Text style={styles.lead}>
-            Enter your details exactly as they appear on your BVN record to raise your daily limits.
+            Check your name matches your BVN record, add your date of birth and BVN, and we'll raise your daily limits.
           </Text>
           <Field label="FIRST NAME" value={firstName} onChangeText={setFirstName} autoCapitalize="words" autoComplete="given-name" />
           <Field label="LAST NAME" value={lastName} onChangeText={setLastName} autoCapitalize="words" autoComplete="family-name" />

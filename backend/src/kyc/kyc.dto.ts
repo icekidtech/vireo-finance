@@ -65,7 +65,11 @@ export class KycRecordResponse {
 export class UserKycResponse {
   userId: string;
   kycTier: number;
-  status: KycStatus;
+  /**
+   * `not_started`: nothing submitted yet. `pending`: started but not complete
+   * (awaiting review, or a check that did not match and can be retried).
+   */
+  status: KycStatus | 'not_started';
   /** Whether automatic BVN verification is configured on this server. */
   bvnAvailable: boolean;
   /** Last four digits of the verified BVN, if any. */

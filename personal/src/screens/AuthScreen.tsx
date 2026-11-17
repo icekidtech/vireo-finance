@@ -18,7 +18,8 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
   const [stage, setStage] = useState<Stage>(mode ? 'details' : 'welcome');
   const [isSignIn, setIsSignIn] = useState(mode === 'signin');
   const [phone, setPhone] = useState('');
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [handle, setHandle] = useState('');
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -45,7 +46,7 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
     guard(async () => {
       if (!isSignIn) {
         // Registration creates the account only; the OTP proves phone ownership.
-        await api.register(phone.trim(), name.trim(), handle.trim().replace(/^[@$]/, '') || undefined);
+        await api.register(phone.trim(), `${firstName.trim()} ${lastName.trim()}`, handle.trim().replace(/^[@$]/, '') || undefined);
       }
       await sendCode();
     }, isSignIn ? 'Could not send a code' : 'Could not create your account');
@@ -105,14 +106,15 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
               <Field label="PHONE" placeholder="+2348012345678" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoCapitalize="none" />
               {!isSignIn && (
                 <>
-                  <Field label="FULL NAME" placeholder="Ada Okafor" value={name} onChangeText={setName} />
+                  <Field label="FIRST NAME" placeholder="Ada" value={firstName} onChangeText={setFirstName} autoCapitalize="words" autoComplete="given-name" hint="Use your name as it appears on your BVN, so verification is quick." />
+                  <Field label="LAST NAME" placeholder="Okafor" value={lastName} onChangeText={setLastName} autoCapitalize="words" autoComplete="family-name" />
                   <Field label="$HANDLE (OPTIONAL)" placeholder="ada" value={handle} onChangeText={setHandle} autoCapitalize="none" hint="3–20 letters, numbers or underscores. Friends can pay you by handle." />
                 </>
               )}
               <Button
                 title={isSignIn ? 'Send code' : 'Continue'}
                 loading={loading}
-                disabled={!phone.trim() || (!isSignIn && !name.trim())}
+                disabled={!phone.trim() || (!isSignIn && (!firstName.trim() || !lastName.trim()))}
                 onPress={onContinue}
               />
             </>

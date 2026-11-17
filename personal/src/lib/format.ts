@@ -95,3 +95,9 @@ export function parseOrderReference(input: string): string {
   const match = trimmed.match(/[?&]ref=([^&\s]+)/);
   return match ? decodeURIComponent(match[1]) : trimmed;
 }
+
+/** "Ada Obi Okafor" -> first "Ada", last "Obi Okafor". A single name leaves the last name empty. */
+export function splitFullName(fullName: string | null | undefined): { firstName: string; lastName: string } {
+  const parts = (fullName ?? '').trim().split(/\s+/).filter(Boolean);
+  return { firstName: parts[0] ?? '', lastName: parts.slice(1).join(' ') };
+}

@@ -340,6 +340,7 @@ const PILL_TONES: Record<string, { bg: string; fg: string }> = {
   verified: { bg: colors.accentSoft, fg: colors.accentDark },
   open: { bg: colors.warnSoft, fg: colors.warn },
   pending: { bg: colors.warnSoft, fg: colors.warn },
+  not_started: { bg: colors.surfaceStrong, fg: colors.textMuted },
   processing: { bg: colors.warnSoft, fg: colors.warn },
   draft: { bg: colors.surface, fg: colors.textMuted },
   expired: { bg: colors.surface, fg: colors.textMuted },
@@ -352,7 +353,7 @@ export function StatusPill({ status }: { status: string }) {
   const tone = PILL_TONES[status] ?? { bg: colors.surface, fg: colors.textMuted };
   return (
     <View style={[styles.pill, { backgroundColor: tone.bg }]}>
-      <Text style={[styles.pillText, { color: tone.fg }]}>{status.toUpperCase()}</Text>
+      <Text style={[styles.pillText, { color: tone.fg }]}>{status.replace(/_/g, ' ').toUpperCase()}</Text>
     </View>
   );
 }

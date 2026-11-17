@@ -125,6 +125,47 @@ describe('KycService.verifyBvn', () => {
   });
 });
 
+describe('KycService.getUserKycStatus', () => {
+  function statusFor(record: unknown, identity: unknown = null) {
+    const records = { findOne: jest.fn(async () => record) };
+    const users = { findOne: jest.fn(async () => ({ id: 'u1', kycTier: 0 })) };
+    const identities = { findOne: jest.fn(async () => identity) };
+    const config = { get: jest.fn() };
+    return new KycService(
+      records as never,
+      users as never,
+      identities as never,
+      config as never,
+      null,
+    ).getUserKycStatus('u1');
+  }
+
+  it('is not_started before anything is submitted', async () => {
+    await expect(statusFor(null)).resolves.toMatchObject({ status: 'not_started' });
+  });
+
+  it('is pending after a BVN check that did not match', async () => {
+    await expect(statusFor({ provider: 'bvn', status: KycStatus.REJECTED })).resolves.toMatchObject(
+      { status: 'pending' },
+    );
+  });
+
+  it('stays rejected when a reviewer rejected a manual submission', async () => {
+    await expect(
+      statusFor({ provider: 'manual', status: KycStatus.REJECTED }),
+    ).resolves.toMatchObject({ status: 'rejected' });
+  });
+
+  it('is verified once the identity is on file', async () => {
+    await expect(
+      statusFor({ provider: 'bvn', status: KycStatus.VERIFIED }, { bvnLast4: '1234' }),
+    ).resolves.toMatchObject({
+      status: 'verified',
+      bvnLast4: '1234',
+    });
+  });
+});
+
 describe('DiditBvnVerifier', () => {
   const verifier = new DiditBvnVerifier({
     apiKey: 'k',

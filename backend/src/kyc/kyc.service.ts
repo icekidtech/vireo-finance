@@ -224,10 +224,21 @@ export class KycService {
       order: { createdAt: 'DESC' },
     });
     const identity = await this.identities.findOne({ where: { userId } });
+    let status: UserKycResponse['status'];
+    if (identity || record?.status === KycStatus.VERIFIED) {
+      status = KycStatus.VERIFIED;
+    } else if (!record) {
+      status = 'not_started';
+    } else if (record.status === KycStatus.REJECTED && record.provider === BVN_PROVIDER) {
+      // A BVN check that did not match: started but not complete, and can be retried.
+      status = KycStatus.PENDING;
+    } else {
+      status = record.status;
+    }
     return {
       userId,
       kycTier: user.kycTier,
-      status: record?.status ?? KycStatus.PENDING,
+      status,
       bvnAvailable: this.bvnAvailable(),
       bvnLast4: identity?.bvnLast4 ?? null,
     };
