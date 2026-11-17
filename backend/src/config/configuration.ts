@@ -48,6 +48,12 @@ export interface AppConfig {
     apiKey: string;
     model: string;
   };
+  logging: {
+    /** Log redacted HTTP request bodies. Development only. */
+    httpBodies: boolean;
+    /** Log full OpenAI request/response payloads. Development only. */
+    llmPayloads: boolean;
+  };
   biometrics: {
     /** Name of the configured biometric vendor adapter; empty means biometrics are disabled. */
     provider: string;
@@ -128,6 +134,10 @@ export default (): AppConfig => ({
     newPayeeLimit: BigInt(process.env.RISK_NEW_PAYEE_LIMIT ?? '5000000'),
     velocityCount: int(process.env.RISK_VELOCITY_COUNT, 10),
     velocityWindowMinutes: int(process.env.RISK_VELOCITY_WINDOW_MINUTES, 10),
+  },
+  logging: {
+    httpBodies: bool(process.env.LOG_HTTP_BODIES, false),
+    llmPayloads: bool(process.env.LOG_LLM_PAYLOADS, false),
   },
   biometrics: {
     provider: (process.env.BIOMETRIC_PROVIDER ?? '').trim().toLowerCase(),

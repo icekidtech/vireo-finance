@@ -401,6 +401,7 @@ export class PagaService {
       throw new BadGatewayException(`Paga ${api} base URL is not configured`);
     }
 
+    const started = Date.now();
     let response: Response;
     try {
       response = await fetch(`${baseUrl}/${operation}`, {
@@ -409,11 +410,15 @@ export class PagaService {
         body: JSON.stringify(body),
       });
     } catch (error) {
-      this.logger.error(`Paga ${api} ${operation} network error: ${String(error)}`);
+      this.logger.error(
+        `Paga ${api} ${operation} network error after ${Date.now() - started}ms: ${String(error)}`,
+      );
       throw new BadGatewayException('Paga request failed');
     }
 
     const text = await response.text();
+    // Status line only: request/response bodies carry account and personal data.
+    this.logger.log(`Paga ${api} ${operation} -> ${response.status} ${Date.now() - started}ms`);
     if (!response.ok) {
       let detail = text;
       try {
