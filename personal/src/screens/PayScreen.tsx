@@ -144,7 +144,7 @@ export default function PayScreen({ navigation, route }: Props) {
     setResolving(true);
     setError(null);
     api
-      .lookupBankAccount({ bankCode: bank.code, accountNumber, amount: amount.replace(/\.$/, '') })
+      .lookupBankAccount({ bankCode: bank.code, accountNumber })
       .then((r) => !cancelled && setAccountName(r.accountName))
       .catch((e) => !cancelled && setError(errorMessage(e, 'Could not verify this account')))
       .finally(() => !cancelled && setResolving(false));

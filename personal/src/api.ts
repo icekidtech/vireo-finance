@@ -147,7 +147,8 @@ export class VireoApi {
     return data;
   }
 
-  async lookupBankAccount(payload: { bankCode: string; accountNumber: string; amount: string }) {
+  /** Resolves the holder's name. No amount: the server checks the account against a nominal ₦1. */
+  async lookupBankAccount(payload: { bankCode: string; accountNumber: string }) {
     const { data } = await this.client.post<{ accountName: string; accountNumber: string; bankCode: string }>(
       '/transfers/bank-lookup',
       payload,
