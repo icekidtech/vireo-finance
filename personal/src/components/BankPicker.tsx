@@ -62,6 +62,11 @@ export default function BankPicker({ banks, value, onChange, loading, label = 'B
             <FlatList
               data={filtered}
               keyExtractor={(b) => b.code}
+              // The whole list (about 110 banks) renders at once: lazy rendering stops at the first screenful
+              // when the list sits inside a height-limited sheet, which made most banks look missing.
+              initialNumToRender={banks.length || 1}
+              windowSize={21}
+              style={{ flexShrink: 1 }}
               keyboardShouldPersistTaps="handled"
               ListEmptyComponent={<Text style={styles.empty}>No bank matches “{query}”.</Text>}
               renderItem={({ item }) => (
