@@ -5,6 +5,7 @@ import { api } from '../api';
 import { canCopy, copyText } from '../lib/clipboard';
 import { useLoad } from '../lib/useLoad';
 import type { RootStackParamList } from '../navigation';
+import InboxBanner from '../components/InboxBanner';
 import { Button, Card, ErrorBanner, Header, Loading, NoticeBanner, Screen } from '../components/ui';
 import { colors, spacing, type } from '../theme';
 
@@ -29,6 +30,7 @@ export default function ReceiveScreen({ navigation }: Props) {
   return (
     <Screen>
       <Header title="Receive money" onBack={() => navigation.goBack()} />
+      <InboxBanner />
 
       <Text style={styles.section}>Bank transfer</Text>
       <Text style={styles.lead}>
@@ -56,7 +58,11 @@ export default function ReceiveScreen({ navigation }: Props) {
       ) : (
         <View>
           <ErrorBanner message={error} />
-          <Button title="Try again" variant="secondary" onPress={refresh} />
+          {error?.includes('Verify your identity') ? (
+            <Button title="Verify your identity" variant="accent" onPress={() => navigation.navigate('Verify')} />
+          ) : (
+            <Button title="Try again" variant="secondary" onPress={refresh} />
+          )}
         </View>
       )}
       <NoticeBanner message="Transfers can take a few minutes to show. Use a payment request below to see payment confirmed instantly." />

@@ -40,6 +40,10 @@ export default function AccountScreen({ navigation }: Props) {
       </View>
       <ErrorBanner message={error} />
 
+      {merchant && merchant.kybStatus !== 'verified' && (
+        <Button title="Verify your business" variant="accent" small onPress={() => navigation.navigate('Verify')} style={{ alignSelf: 'flex-start', marginTop: spacing.md }} />
+      )}
+
       <SectionTitle>Settlement bank</SectionTitle>
       <Button title="Edit business & bank" variant="secondary" small onPress={() => navigation.navigate('EditBusiness')} style={{ alignSelf: 'flex-start', marginBottom: spacing.md }} />
       <Card>

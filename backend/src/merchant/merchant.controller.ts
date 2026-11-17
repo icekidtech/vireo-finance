@@ -12,6 +12,7 @@ import {
 } from './dto/merchant.dto';
 import { CreateTerminalPaymentDto } from './dto/terminal-payment.dto';
 import { TerminalPaymentService } from './terminal-payment.service';
+import { MerchantVerificationService } from './merchant-verification.service';
 import { MerchantDepositService } from './merchant-deposit.service';
 import { MerchantService } from './merchant.service';
 
@@ -22,6 +23,7 @@ export class MerchantController {
     private readonly merchants: MerchantService,
     private readonly terminal: TerminalPaymentService,
     private readonly deposits: MerchantDepositService,
+    private readonly verification: MerchantVerificationService,
   ) {}
 
   @UseGuards(JwtAuthGuard, AdminGuard)
@@ -44,6 +46,13 @@ export class MerchantController {
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.merchants.getProfile(user.userId);
+  }
+
+  /** Re-checks whether this merchant now qualifies for automatic verification. */
+  @Post('me/verification')
+  @HttpCode(200)
+  verify(@CurrentUser() user: AuthenticatedUser) {
+    return this.verification.check(user.userId);
   }
 
   /** Bank account customers can transfer to; credited to the merchant balance. */

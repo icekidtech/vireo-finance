@@ -18,6 +18,7 @@ export type RootStackParamList = {
   OrderDetail: { reference: string };
   Settle: undefined;
   Receive: undefined;
+  Verify: undefined;
   Devices: undefined;
   EditBusiness: undefined;
   BiometricPayment: { orderReference: string; amount: string };

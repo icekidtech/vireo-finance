@@ -9,6 +9,8 @@ import { LedgerModule } from '../ledger/ledger.module';
 import { PagaModule } from '../paga/paga.module';
 import { TransfersModule } from '../transfers/transfers.module';
 import { MerchantOrderController } from './merchant-order.controller';
+import { MerchantVerificationService } from './merchant-verification.service';
+import { KycIdentity } from '../kyc/kyc-identity.entity';
 import { MerchantDepositService } from './merchant-deposit.service';
 import { MerchantController } from './merchant.controller';
 import { MerchantOrder } from './merchant-order.entity';
@@ -20,7 +22,15 @@ import { User } from '../users/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Merchant, MerchantOrder, Settlement, Hold, Challenge, User]),
+    TypeOrmModule.forFeature([
+      Merchant,
+      MerchantOrder,
+      Settlement,
+      Hold,
+      Challenge,
+      User,
+      KycIdentity,
+    ]),
     AccountsModule,
     LedgerModule,
     ChallengesModule,
@@ -29,7 +39,12 @@ import { User } from '../users/user.entity';
     BiometricsModule,
   ],
   controllers: [MerchantController, MerchantOrderController],
-  providers: [MerchantService, TerminalPaymentService, MerchantDepositService],
+  providers: [
+    MerchantService,
+    TerminalPaymentService,
+    MerchantDepositService,
+    MerchantVerificationService,
+  ],
   exports: [MerchantService],
 })
 export class MerchantModule {}

@@ -1,5 +1,8 @@
 import axios, { AxiosInstance } from 'axios';
 import type {
+  AppNotification,
+  KycState,
+  VerificationOutcome,
   Device,
   Merchant,
   MerchantDashboard,
@@ -121,6 +124,38 @@ export class VireoApi {
       '/merchants/me/deposit-account',
     );
     return data;
+  }
+
+  /* ── Identity & verification ── */
+
+  async getKycStatus() {
+    const { data } = await this.client.get<KycState>('/kyc/me');
+    return data;
+  }
+
+  /** Checks name, date of birth and BVN against the bank record. */
+  async verifyBvn(input: { bvn: string; firstName: string; lastName: string; dateOfBirth: string }) {
+    const { data } = await this.client.post<KycState>('/kyc/bvn', input);
+    return data;
+  }
+
+  /** Re-checks whether the business now qualifies for automatic verification. */
+  async checkMerchantVerification() {
+    const { data } = await this.client.post<VerificationOutcome>('/merchants/me/verification');
+    return data;
+  }
+
+  /* ── Notifications ── */
+
+  async listUnreadNotifications() {
+    const { data } = await this.client.get<AppNotification[]>('/notifications', {
+      params: { unread: 'true', limit: 5 },
+    });
+    return data;
+  }
+
+  async markNotificationsRead(ids?: string[]) {
+    await this.client.post('/notifications/read', ids ? { ids } : {});
   }
 
   async listBanks() {

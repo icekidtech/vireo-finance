@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { LoggerNotificationProvider } from './providers/logger.provider';
 import { SmsNotificationProvider } from './providers/sms.provider';
 import { PushNotificationProvider } from './providers/push.provider';
+import { InAppNotificationProvider } from './providers/in-app.provider';
 import { NotificationProvider, NotificationChannel } from './notification-provider.interface';
 
 @Injectable()
@@ -13,8 +14,12 @@ export class NotificationsService {
     loggerProvider: LoggerNotificationProvider,
     smsProvider: SmsNotificationProvider,
     pushProvider: PushNotificationProvider,
+    inAppProvider?: InAppNotificationProvider,
   ) {
     this.providers = [loggerProvider];
+    if (inAppProvider) {
+      this.providers.push(inAppProvider);
+    }
     if (smsProvider.constructor.name === 'SmsNotificationProvider') {
       this.providers.push(smsProvider);
     }

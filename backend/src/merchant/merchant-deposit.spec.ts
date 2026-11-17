@@ -1,13 +1,17 @@
-import { BadGatewayException, NotFoundException } from '@nestjs/common';
+import { BadGatewayException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { MerchantDepositService } from './merchant-deposit.service';
 
-function setup(opts: { merchant?: unknown; existing?: unknown; pagaFails?: boolean } = {}) {
+function setup(
+  opts: { merchant?: unknown; existing?: unknown; pagaFails?: boolean; tier?: number } = {},
+) {
   const merchant =
     opts.merchant === undefined
       ? { id: 'm1', businessName: 'Ada Kitchen', settlementAccountId: 'acct-m1' }
       : opts.merchant;
   const merchants = { findOne: jest.fn(async () => merchant) };
-  const users = { findOne: jest.fn(async () => ({ id: 'u1', phone: '+2348012345678' })) };
+  const users = {
+    findOne: jest.fn(async () => ({ id: 'u1', phone: '+2348012345678', kycTier: opts.tier ?? 1 })),
+  };
   const accounts = {
     getVirtualAccountForAccount: jest.fn(async () => opts.existing ?? null),
     createVirtualAccount: jest.fn(async (_u: string, _a: string, d: Record<string, string>) => d),
@@ -65,5 +69,11 @@ describe('MerchantDepositService', () => {
     await expect(setup({ merchant: null }).service.getDepositAccount('u1')).rejects.toThrow(
       NotFoundException,
     );
+  });
+
+  it('does not issue an account number until the owner is identity-verified', async () => {
+    const { service, paga } = setup({ tier: 0 });
+    await expect(service.getDepositAccount('u1')).rejects.toThrow(ForbiddenException);
+    expect(paga.createVirtualAccount).not.toHaveBeenCalled();
   });
 });

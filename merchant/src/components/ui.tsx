@@ -211,6 +211,8 @@ interface ButtonProps {
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
   small?: boolean;
+  /** Tighter padding and type for buttons sharing a row, so titles stay on one line. */
+  dense?: boolean;
 }
 
 export function Button({
@@ -221,6 +223,7 @@ export function Button({
   disabled,
   style,
   small,
+  dense,
 }: ButtonProps) {
   const scale = useRef(new Animated.Value(1)).current;
   const press = (to: number) =>
@@ -243,13 +246,19 @@ export function Button({
         style={[
           styles.button,
           small && styles.buttonSmall,
+          dense && { paddingHorizontal: spacing.sm },
           { backgroundColor: palette.bg, opacity: inactive ? 0.4 : 1 },
         ]}
       >
         {loading ? (
           <ActivityIndicator color={palette.fg} />
         ) : (
-          <Text style={[styles.buttonText, small && { fontSize: 14 }, { color: palette.fg }]}>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            style={[styles.buttonText, small && { fontSize: 14 }, dense && { fontSize: 15 }, { color: palette.fg }]}
+          >
             {title}
           </Text>
         )}

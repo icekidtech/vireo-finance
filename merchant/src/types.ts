@@ -26,6 +26,31 @@ export interface Merchant {
   createdAt: string;
 }
 
+export interface KycState {
+  userId: string;
+  kycTier: number;
+  status: 'pending' | 'verified' | 'rejected';
+  bvnAvailable: boolean;
+  bvnLast4: string | null;
+}
+
+export type VerificationReason = 'verified' | 'rejected' | 'identity_required' | 'bank_required' | 'name_mismatch';
+
+export interface VerificationOutcome {
+  kybStatus: string;
+  reason: VerificationReason;
+  kycTier: number;
+}
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  body: string;
+  data: Record<string, unknown> | null;
+  read: boolean;
+  createdAt: string;
+}
+
 export interface MerchantOrder {
   id: string;
   reference: string;

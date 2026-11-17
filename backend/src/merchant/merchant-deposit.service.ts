@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AccountsService } from '../accounts/accounts.service';
@@ -36,20 +36,26 @@ export class MerchantDepositService {
       throw new NotFoundException('Merchant profile not found');
     }
 
+    // A bank account number is only issued once the owner's identity (BVN) is verified.
+    const owner = await this.users.findOne({ where: { id: userId } });
+    if (!owner) throw new NotFoundException('User not found');
+    if (owner.kycTier < 1) {
+      throw new ForbiddenException('Verify your identity to get a bank account number');
+    }
+
     const existing = await this.accounts.getVirtualAccountForAccount(merchant.settlementAccountId);
     if (existing) return this.present(existing, merchant);
 
     let pending = this.inflight.get(merchant.id);
     if (!pending) {
-      pending = this.provision(merchant, userId).finally(() => this.inflight.delete(merchant.id));
+      pending = this.provision(merchant, owner).finally(() => this.inflight.delete(merchant.id));
       this.inflight.set(merchant.id, pending);
     }
     return pending;
   }
 
-  private async provision(merchant: Merchant, userId: string): Promise<DepositAccount> {
-    const owner = await this.users.findOne({ where: { id: userId } });
-    if (!owner) throw new NotFoundException('User not found');
+  private async provision(merchant: Merchant, owner: User): Promise<DepositAccount> {
+    const userId = owner.id;
 
     // A BadGatewayException from Paga propagates; the global filter shows a generic message.
     const created = await this.paga.createVirtualAccount({

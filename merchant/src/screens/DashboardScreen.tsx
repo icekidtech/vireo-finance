@@ -22,6 +22,7 @@ import {
   Empty,
   FitText,
 } from '../components/ui';
+import InboxBanner from '../components/InboxBanner';
 import { colors, spacing, type } from '../theme';
 
 type Props = CompositeScreenProps<
@@ -55,6 +56,7 @@ export default function DashboardScreen({ navigation }: Props) {
       </View>
 
       <ErrorBanner message={error} />
+      <InboxBanner onNew={refresh} />
       {kybPending && (
         <NoticeBanner
           message={
@@ -62,6 +64,14 @@ export default function DashboardScreen({ navigation }: Props) {
               ? 'Your business verification was rejected. Contact support to cash out.'
               : 'Business verification is pending. You can take payments now; cash out unlocks once verified.'
           }
+        />
+      )}
+      {kybPending && merchant!.kybStatus !== 'rejected' && (
+        <Button
+          title="Verify your business"
+          variant="accent"
+          onPress={() => navigation.navigate('Verify')}
+          style={{ marginBottom: spacing.md }}
         />
       )}
 
@@ -80,18 +90,21 @@ export default function DashboardScreen({ navigation }: Props) {
           <View style={styles.actions}>
             <Button
               title="Charge"
+              dense
               variant="accent"
               style={{ flex: 1 }}
               onPress={() => navigation.navigate('Charge')}
             />
             <Button
               title="Receive"
+              dense
               variant="secondary"
               style={{ flex: 1 }}
               onPress={() => navigation.navigate('Receive')}
             />
             <Button
               title="Cash out"
+              dense
               variant="secondary"
               style={{ flex: 1 }}
               onPress={() => navigation.navigate('Settle')}
