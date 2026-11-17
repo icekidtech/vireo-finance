@@ -4,6 +4,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import DialogHost from './src/components/DialogHost';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import AuthScreen from './src/screens/AuthScreen';
 import LandingScreen from './src/screens/LandingScreen';
@@ -116,6 +117,7 @@ export default function App() {
         <AppNavigator />
         <StatusBar style="light" />
       </AuthProvider>
+      <DialogHost />
     </SafeAreaProvider>
   );
 }
