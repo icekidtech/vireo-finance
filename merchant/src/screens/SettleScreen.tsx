@@ -12,6 +12,7 @@ import {
   Button,
   Card,
   ErrorBanner,
+  FitText,
   Header,
   Keypad,
   ListRow,
@@ -139,9 +140,9 @@ export default function SettleScreen({ navigation }: Props) {
       </View>
       <View style={styles.entry}>
         <Text style={styles.availLabel}>Available {formatMoney(available)}</Text>
-        <Text style={[styles.amount, amount === '' && { color: colors.textFaint }]} numberOfLines={1} adjustsFontSizeToFit>
-          ₦{groupAmountInput(amount)}
-        </Text>
+        <FitText base={72} style={[styles.amount, amount === '' && { color: colors.textFaint }]}>
+          {`₦${groupAmountInput(amount)}`}
+        </FitText>
         <TouchableOpacity onPress={() => setAmount(available)}>
           <Text style={styles.all}>Cash out everything</Text>
         </TouchableOpacity>

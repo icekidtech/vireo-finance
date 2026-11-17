@@ -56,4 +56,30 @@ describe('validateEnv', () => {
   it('does not need a biometric key while biometrics are disabled', () => {
     expect(() => validateEnv({ JWT_SECRET: secret })).not.toThrow();
   });
+
+  it('forbids unverified database TLS in production', () => {
+    expect(() =>
+      validateEnv({
+        NODE_ENV: 'production',
+        JWT_SECRET: secret,
+        DB_HOST: 'h',
+        DB_USER: 'u',
+        DB_PASSWORD: 'p',
+        DB_NAME: 'n',
+        DB_SSL_INSECURE: 'true',
+      }),
+    ).toThrow(/DB_SSL_INSECURE/);
+  });
+
+  it('requires an explicit database password in production', () => {
+    expect(() =>
+      validateEnv({
+        NODE_ENV: 'production',
+        JWT_SECRET: secret,
+        DB_HOST: 'h',
+        DB_USER: 'u',
+        DB_NAME: 'n',
+      }),
+    ).toThrow(/DB_PASSWORD/);
+  });
 });

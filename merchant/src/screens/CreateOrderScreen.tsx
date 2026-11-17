@@ -6,7 +6,7 @@ import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
 import { errorMessage, groupAmountInput } from '../lib/format';
 import type { RootStackParamList, TabParamList } from '../navigation';
-import { Button, ErrorBanner, Keypad, Screen, applyKey } from '../components/ui';
+import { Button, ErrorBanner, FitText, Keypad, Screen, applyKey } from '../components/ui';
 import { colors, radius, spacing, type } from '../theme';
 
 type Props = CompositeScreenProps<
@@ -46,9 +46,9 @@ export default function CreateOrderScreen({ navigation }: Props) {
       <View style={styles.body}>
         <Text style={styles.title}>Charge</Text>
         <View style={styles.amountWrap}>
-          <Text style={[styles.amount, !valid && { color: colors.textFaint }]} numberOfLines={1} adjustsFontSizeToFit>
-            ₦{display}
-          </Text>
+          <FitText base={72} style={[styles.amount, !valid && { color: colors.textFaint }]}>
+            {`₦${display}`}
+          </FitText>
         </View>
         <TextInput
           style={styles.note}

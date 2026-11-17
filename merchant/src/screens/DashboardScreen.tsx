@@ -20,6 +20,7 @@ import {
   SectionTitle,
   StatusPill,
   Empty,
+  FitText,
 } from '../components/ui';
 import { colors, spacing, type } from '../theme';
 
@@ -94,7 +95,9 @@ export default function DashboardScreen({ navigation }: Props) {
           <View style={styles.stats}>
             <Card style={styles.stat}>
               <Text style={styles.statLabel}>Sales today</Text>
-              <Text style={styles.statValue}>{formatMoney(data.salesToday.amount)}</Text>
+              <FitText base={20} share={0.5} padding={62} style={styles.statValue}>
+                {formatMoney(data.salesToday.amount)}
+              </FitText>
             </Card>
             <Card style={styles.stat}>
               <Text style={styles.statLabel}>Orders paid</Text>

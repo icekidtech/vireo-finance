@@ -16,6 +16,7 @@ import {
   Card,
   ErrorBanner,
   Field,
+  FitText,
   Keypad,
   ListRow,
   NoticeBanner,
@@ -294,9 +295,9 @@ export default function PayScreen({ navigation, route }: Props) {
       ) : (
         <>
           <View style={styles.amountBody}>
-            <Text style={[styles.amount, !amountValid && { color: colors.textFaint }]} numberOfLines={1} adjustsFontSizeToFit>
-              ₦{groupAmountInput(amount)}
-            </Text>
+            <FitText base={72} style={[styles.amount, !amountValid && { color: colors.textFaint }]}>
+              {`₦${groupAmountInput(amount)}`}
+            </FitText>
             <View style={{ paddingHorizontal: spacing.xl, width: '100%', marginTop: spacing.lg }}>
               <ErrorBanner message={error} />
             </View>

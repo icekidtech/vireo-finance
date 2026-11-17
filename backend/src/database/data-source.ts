@@ -1,8 +1,7 @@
 import 'dotenv/config';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
-
-const ssl = process.env.DB_SSL === 'true';
+import { resolveDbSsl } from './ssl';
 
 export default new DataSource({
   type: 'postgres',
@@ -11,7 +10,7 @@ export default new DataSource({
   username: process.env.DB_USER ?? 'postgres',
   password: process.env.DB_PASSWORD ?? 'postgres',
   database: process.env.DB_NAME ?? 'vireo',
-  ssl: ssl ? { rejectUnauthorized: false } : false,
+  ssl: resolveDbSsl(process.env),
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/../migrations/*{.ts,.js}'],
   migrationsTableName: 'schema_migrations',

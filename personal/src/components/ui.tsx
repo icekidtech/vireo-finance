@@ -10,6 +10,7 @@ import {
   Text,
   TextInput,
   TextInputProps,
+  TextStyle,
   TouchableOpacity,
   useWindowDimensions,
   View,
@@ -31,6 +32,8 @@ interface ScreenProps {
   padded?: boolean;
   edges?: ('top' | 'bottom' | 'left' | 'right')[];
   background?: string;
+  /** Vertically centre the content (sign-in / short forms), still scrolling if it overflows. */
+  center?: boolean;
 }
 
 export function Screen({
@@ -41,11 +44,17 @@ export function Screen({
   padded = true,
   edges = ['top'],
   background = colors.bg,
+  center = false,
 }: ScreenProps) {
   const body = <FadeIn style={scroll ? undefined : styles.fill}>{children}</FadeIn>;
   const content = scroll ? (
     <ScrollView
-      contentContainerStyle={[styles.scrollContent, styles.column, padded && styles.padded]}
+      contentContainerStyle={[
+        styles.scrollContent,
+        styles.column,
+        padded && styles.padded,
+        center && styles.centered,
+      ]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
       refreshControl={
@@ -69,6 +78,74 @@ export function Screen({
       )}
       {content}
     </SafeAreaView>
+  );
+}
+
+/**
+ * Sign-in / onboarding frame: vertically centred, with the form in a card on
+ * wide screens and edge-to-edge on phones. Scrolls when the keyboard or a short
+ * window leaves too little room.
+ */
+export function AuthLayout({ children, onBack }: { children: ReactNode; onBack?: () => void }) {
+  const { width } = useWindowDimensions();
+  const wide = width >= 700;
+  return (
+    <Screen center>
+      <View style={wide ? styles.authCard : styles.authFlat}>
+        <View style={styles.authTop}>
+          {onBack ? (
+            <TouchableOpacity onPress={onBack} hitSlop={12} accessibilityLabel="Back">
+              <Text style={[styles.back, { marginBottom: 0 }]}>‹</Text>
+            </TouchableOpacity>
+          ) : (
+            <View />
+          )}
+          <Text style={styles.authLogo}>vireo</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        {children}
+      </View>
+    </Screen>
+  );
+}
+
+/**
+ * Font size that keeps `text` on one line within the available width. Used for
+ * hero amounts, because adjustsFontSizeToFit is not honoured on web.
+ */
+export function useFitFont(
+  text: string,
+  base: number,
+  horizontalPadding = 2 * spacing.xl,
+  /** Fraction of the content column the text may use (0.5 for a half-width card). */
+  share = 1,
+): number {
+  const { width } = useWindowDimensions();
+  const available = Math.min(width, 520) * share - horizontalPadding;
+  const widest = Math.max(text.length, 1) * 0.6; // average glyph ≈ 0.6em for heavy numerals
+  // Floor is proportional so small base sizes can still shrink to fit.
+  return Math.max(Math.max(12, Math.round(base * 0.4)), Math.min(base, Math.floor(available / widest)));
+}
+
+/** Single-line text that shrinks to fit its box instead of wrapping or overflowing. */
+export function FitText({
+  children,
+  base,
+  padding,
+  share,
+  style,
+}: {
+  children: string;
+  base: number;
+  padding?: number;
+  share?: number;
+  style?: StyleProp<TextStyle>;
+}) {
+  const fontSize = useFitFont(children, base, padding, share);
+  return (
+    <Text numberOfLines={1} style={[style, { fontSize }]}>
+      {children}
+    </Text>
   );
 }
 
@@ -286,11 +363,17 @@ export function BigMoney({
 }) {
   const { whole, cents } = splitMoney(amount);
   const base = size === 'hero' ? type.hero : type.display;
+  // Hero amounts sit inside a padded card, so reserve extra horizontal room.
+  const fontSize = useFitFont(`${symbol}${whole}.${cents}`, base.fontSize, size === 'hero' ? 4 * spacing.xl : 2 * spacing.xl);
   return (
-    <Text style={[base, { color }]} accessibilityLabel={`${symbol}${whole}.${cents}`}>
+    <Text
+      numberOfLines={1}
+      style={[base, { color, fontSize }]}
+      accessibilityLabel={`${symbol}${whole}.${cents}`}
+    >
       {symbol}
       {whole}
-      <Text style={{ fontSize: base.fontSize * 0.45, color: colors.textFaint }}>.{cents}</Text>
+      <Text style={{ fontSize: fontSize * 0.45, color: colors.textFaint }}>.{cents}</Text>
     </Text>
   );
 }
@@ -454,6 +537,20 @@ export function AppFrame({ children }: { children: ReactNode }) {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   column: { width: '100%', maxWidth: 520, alignSelf: 'center' },
+  authCard: {
+    width: '100%',
+    maxWidth: 440,
+    alignSelf: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.xxl,
+  },
+  authFlat: { width: '100%' },
+  authTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xl },
+  authLogo: { fontSize: 26, fontWeight: '900', letterSpacing: -1.2, color: colors.text },
+  centered: { flexGrow: 1, justifyContent: 'center', paddingVertical: spacing.xl },
   scrollContent: { paddingBottom: spacing.xxl * 2 },
   padded: { paddingHorizontal: spacing.xl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },

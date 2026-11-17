@@ -1,17 +1,18 @@
 import { useState } from 'react';
 import type { StackScreenProps } from '@react-navigation/stack';
 import type { RootStackParamList } from '../navigation';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import { errorMessage } from '../lib/format';
-import { Button, ErrorBanner, Field, Screen } from '../components/ui';
+import { AuthLayout, Button, ErrorBanner, Field, Screen } from '../components/ui';
 import { colors, spacing, type } from '../theme';
 
 type Stage = 'welcome' | 'account' | 'otp' | 'business';
 
 export default function OnboardScreen({ navigation, route }: StackScreenProps<RootStackParamList, 'Onboard'>) {
   const { login } = useAuth();
+  const { height } = useWindowDimensions();
   // Arriving from the web landing page skips the welcome step.
   const mode = route.params?.mode;
   const [stage, setStage] = useState<Stage>(mode ? 'account' : 'welcome');
@@ -96,10 +97,11 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
     setStage('welcome');
   };
 
-  return (
-    <Screen>
-      {stage === 'welcome' ? (
-        <View style={styles.welcome}>
+  if (stage === 'welcome') {
+    return (
+      <Screen>
+
+        <View style={[styles.welcome, { minHeight: Math.max(520, height - 140) }]}>
           <Text style={styles.logo}>vireo</Text>
           <Text style={styles.tag}>Get paid the way{'\n'}your customers pay.</Text>
           <Text style={styles.point}>• Show a QR, get paid instantly</Text>
@@ -123,13 +125,12 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
             }}
           />
         </View>
-      ) : (
-        <View style={{ paddingTop: spacing.xl }}>
-          {stage !== 'business' && (
-            <TouchableOpacity onPress={back} hitSlop={12}>
-              <Text style={styles.back}>‹</Text>
-            </TouchableOpacity>
-          )}
+      </Screen>
+    );
+  }
+
+  return (
+    <AuthLayout onBack={stage === 'business' ? undefined : back}>
           <ErrorBanner message={error} />
 
           {stage === 'account' && (
@@ -168,9 +169,7 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
               <Button title="Finish" variant="accent" loading={loading} disabled={!businessName.trim() || !handle.trim()} onPress={onOnboard} />
             </>
           )}
-        </View>
-      )}
-    </Screen>
+    </AuthLayout>
   );
 }
 

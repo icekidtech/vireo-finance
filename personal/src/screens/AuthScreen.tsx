@@ -1,17 +1,18 @@
 import { useState } from 'react';
 import type { StackScreenProps } from '@react-navigation/stack';
 import type { RootStackParamList } from '../navigation';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import { errorMessage } from '../lib/format';
-import { Button, ErrorBanner, Field, Screen } from '../components/ui';
+import { AuthLayout, Button, ErrorBanner, Field, Screen } from '../components/ui';
 import { colors, spacing, type } from '../theme';
 
 type Stage = 'welcome' | 'details' | 'otp';
 
 export default function AuthScreen({ navigation, route }: StackScreenProps<RootStackParamList, 'Auth'>) {
   const { login } = useAuth();
+  const { height } = useWindowDimensions();
   // Arriving from the web landing page skips the welcome step.
   const mode = route.params?.mode;
   const [stage, setStage] = useState<Stage>(mode ? 'details' : 'welcome');
@@ -55,10 +56,18 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
       login(data.accessToken, data.user);
     }, 'Invalid or expired code');
 
-  return (
-    <Screen>
-      {stage === 'welcome' ? (
-        <View style={styles.welcome}>
+  const back = () => {
+    setError(null);
+    if (stage === 'otp') return setStage('details');
+    if (mode && navigation.canGoBack()) return navigation.goBack();
+    setStage('welcome');
+  };
+
+  if (stage === 'welcome') {
+    return (
+      <Screen>
+
+        <View style={[styles.welcome, { minHeight: Math.max(520, height - 140) }]}>
           <Text style={styles.logo}>vireo</Text>
           <Text style={styles.tag}>Money that responds{'\n'}to you.</Text>
           <Text style={styles.point}>• Pay people, banks and merchants</Text>
@@ -82,19 +91,12 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
             }}
           />
         </View>
-      ) : (
-        <View style={{ paddingTop: spacing.xl }}>
-          <TouchableOpacity
-            onPress={() => {
-              setError(null);
-              if (stage === 'otp') return setStage('details');
-              if (mode && navigation.canGoBack()) return navigation.goBack();
-              setStage('welcome');
-            }}
-            hitSlop={12}
-          >
-            <Text style={styles.back}>‹</Text>
-          </TouchableOpacity>
+      </Screen>
+    );
+  }
+
+  return (
+    <AuthLayout onBack={back}>
           <ErrorBanner message={error} />
 
           {stage === 'details' && (
@@ -125,9 +127,7 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
               <Button title="Resend code" variant="ghost" onPress={() => guard(sendCode, 'Could not resend')} />
             </>
           )}
-        </View>
-      )}
-    </Screen>
+    </AuthLayout>
   );
 }
 

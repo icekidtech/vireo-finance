@@ -115,8 +115,8 @@ export default function Landing({ content, onPrimary, onSecondary }: Props) {
                 </FadeIn>
                 <FadeIn delay={480} y={20}>
                   <View style={styles.ctaRow}>
-                    <Button title={content.primaryCta} variant="accent" onPress={onPrimary} style={styles.cta} />
-                    <Button title={content.secondaryCta} variant="secondary" onPress={onSecondary} style={styles.cta} />
+                    <Button title={content.primaryCta} variant="accent" onPress={onPrimary} style={compact ? styles.ctaFull : styles.cta} />
+                    <Button title={content.secondaryCta} variant="secondary" onPress={onSecondary} style={compact ? styles.ctaFull : styles.cta} />
                   </View>
                 </FadeIn>
               </View>
@@ -287,6 +287,7 @@ const styles = StyleSheet.create({
   sub: { ...type.body, fontSize: 18, lineHeight: 28, color: colors.textMuted, marginTop: spacing.xl, maxWidth: 540 },
   ctaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.xxl },
   cta: { minWidth: 200 },
+  ctaFull: { width: '100%' },
 
   artWrap: { alignItems: 'center', justifyContent: 'center', minHeight: 360 },
   orb: { position: 'absolute', right: 0, top: 0 },

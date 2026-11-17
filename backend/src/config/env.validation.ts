@@ -1,7 +1,7 @@
 import { parseEncryptionKey } from '../common/crypto';
 
 const MIN_JWT_SECRET_LENGTH = 32;
-const REQUIRED_IN_PRODUCTION = ['DB_HOST', 'DB_USER', 'DB_NAME'];
+const REQUIRED_IN_PRODUCTION = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
 
 /**
  * Fails startup on unsafe configuration rather than running with a weak
@@ -18,6 +18,11 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
   if (config.NODE_ENV === 'production') {
     for (const key of REQUIRED_IN_PRODUCTION) {
       if (!config[key]) errors.push(`${key} is required in production`);
+    }
+    if (config.DB_SSL_INSECURE === 'true') {
+      errors.push(
+        'DB_SSL_INSECURE must not be enabled in production (certificates must be verified)',
+      );
     }
     if (config.OTP_LOG_CODE === 'true' || config.OTP_LOG_CODE === '1') {
       errors.push('OTP_LOG_CODE must not be enabled in production');
