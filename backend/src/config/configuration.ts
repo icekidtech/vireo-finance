@@ -65,6 +65,19 @@ export interface AppConfig {
     encryptionKey: string;
     didit: { apiKey: string; baseUrl: string; keyType: string; timeoutMs: number };
   };
+  storage: {
+    /** Document storage backend; empty disables document uploads. */
+    provider: string;
+    /** Base64 AES-256 key encrypting stored documents. */
+    documentEncryptionKey: string;
+    b2: {
+      keyId: string;
+      applicationKey: string;
+      bucketId: string;
+      bucketName: string;
+      timeoutMs: number;
+    };
+  };
   kyc: {
     /** Name of the BVN verification vendor; empty disables automatic BVN checks. */
     provider: string;
@@ -156,6 +169,17 @@ export default (): AppConfig => ({
   logging: {
     httpBodies: bool(process.env.LOG_HTTP_BODIES, false),
     llmPayloads: bool(process.env.LOG_LLM_PAYLOADS, false),
+  },
+  storage: {
+    provider: (process.env.DOCUMENT_STORAGE ?? '').trim().toLowerCase(),
+    documentEncryptionKey: process.env.DOCUMENT_ENCRYPTION_KEY ?? '',
+    b2: {
+      keyId: process.env.B2_KEY_ID ?? '',
+      applicationKey: process.env.B2_APPLICATION_KEY ?? '',
+      bucketId: process.env.B2_BUCKET_ID ?? '',
+      bucketName: process.env.B2_BUCKET_NAME ?? '',
+      timeoutMs: parseInt(process.env.B2_TIMEOUT_MS ?? '20000', 10),
+    },
   },
   kyc: {
     provider: (process.env.KYC_PROVIDER ?? '').trim().toLowerCase(),

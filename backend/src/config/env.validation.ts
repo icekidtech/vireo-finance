@@ -81,6 +81,26 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     }
   }
 
+  if (typeof config.DOCUMENT_STORAGE === 'string' && config.DOCUMENT_STORAGE.trim()) {
+    try {
+      parseEncryptionKey(String(config.DOCUMENT_ENCRYPTION_KEY ?? ''));
+    } catch {
+      errors.push('DOCUMENT_ENCRYPTION_KEY must be 32 random bytes, base64-encoded');
+    }
+    const reused = ['BIOMETRIC_ENCRYPTION_KEY', 'KYC_ENCRYPTION_KEY'].some(
+      (other) => config[other] && config[other] === config.DOCUMENT_ENCRYPTION_KEY,
+    );
+    if (reused) {
+      errors.push('DOCUMENT_ENCRYPTION_KEY must differ from the biometric and KYC keys');
+    }
+    if (config.DOCUMENT_STORAGE.trim().toLowerCase() === 'b2') {
+      for (const name of ['B2_KEY_ID', 'B2_APPLICATION_KEY', 'B2_BUCKET_ID', 'B2_BUCKET_NAME']) {
+        if (!String(config[name] ?? '').trim())
+          errors.push(`${name} is required when DOCUMENT_STORAGE=b2`);
+      }
+    }
+  }
+
   const usesDidit = ['BIOMETRIC_PROVIDER', 'KYC_PROVIDER'].some(
     (name) =>
       String(config[name] ?? '')
