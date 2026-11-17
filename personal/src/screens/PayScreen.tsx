@@ -25,6 +25,7 @@ import {
   applyKey,
 } from '../components/ui';
 import { Pop } from '../components/motion';
+import QrScanner from '../components/QrScanner';
 import { colors, spacing, type } from '../theme';
 
 type Props = CompositeScreenProps<
@@ -43,6 +44,7 @@ export default function PayScreen({ navigation, route }: Props) {
   const [bankCode, setBankCode] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [orderInput, setOrderInput] = useState('');
+  const [manual, setManual] = useState(false);
   const [order, setOrder] = useState<MerchantOrder | null>(null);
   const [draft, setDraft] = useState<TransferDraft | null>(null);
   const [sent, setSent] = useState<Transfer | null>(null);
@@ -78,6 +80,7 @@ export default function PayScreen({ navigation, route }: Props) {
     setBankCode('');
     setAccountNumber('');
     setOrderInput('');
+    setManual(false);
     setOrder(null);
     setDraft(null);
     setSent(null);
@@ -86,9 +89,9 @@ export default function PayScreen({ navigation, route }: Props) {
     setIdempotencyKey(Crypto.randomUUID());
   }, []);
 
-  const lookupOrder = async () => {
-    const reference = parseOrderReference(orderInput);
-    if (!reference) return setError('Enter or paste the order reference');
+  const lookupOrder = async (raw: string = orderInput) => {
+    const reference = parseOrderReference(raw);
+    if (!reference) return setError('Enter the order reference');
     setLoading(true);
     setError(null);
     setOrder(null);
@@ -104,6 +107,16 @@ export default function PayScreen({ navigation, route }: Props) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const onScan = (data: string) => {
+    const reference = parseOrderReference(data);
+    // Only our own order codes: anything else is some other QR code.
+    if (!/^ord_[A-Za-z0-9]{6,64}$/.test(reference)) {
+      return setError('That is not a Vireo payment code');
+    }
+    setOrderInput(reference);
+    lookupOrder(reference);
   };
 
   const createDraft = async () => {
@@ -257,7 +270,7 @@ export default function PayScreen({ navigation, route }: Props) {
       <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.md }}>
         <SegmentedControl
           value={kind}
-          onChange={(k) => { setKind(k); setError(null); setOrder(null); }}
+          onChange={(k) => { setKind(k); setError(null); setOrder(null); setManual(false); }}
           options={[
             { key: 'internal', label: 'Person' },
             { key: 'bank', label: 'Bank' },
@@ -269,14 +282,25 @@ export default function PayScreen({ navigation, route }: Props) {
       {kind === 'merchant' ? (
         <View style={{ flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.xxl }}>
           <ErrorBanner message={error} />
-          <Field
-            label="ORDER REFERENCE"
-            placeholder="ord_… or paste the QR link"
-            value={orderInput}
-            onChangeText={(v) => { setOrderInput(v); setOrder(null); }}
-            autoCapitalize="none"
-            hint="Ask the merchant to show their payment QR code."
-          />
+          {!order && !manual ? (
+            <>
+              <QrScanner onScan={onScan} paused={loading} />
+              <Text style={styles.hint}>Point your camera at the merchant’s payment QR code.</Text>
+              <Button title="Enter code manually" variant="ghost" onPress={() => setManual(true)} />
+            </>
+          ) : null}
+          {!order && manual ? (
+            <>
+              <Field
+                label="ORDER REFERENCE"
+                placeholder="ord_…"
+                value={orderInput}
+                onChangeText={(v) => { setOrderInput(v); setOrder(null); }}
+                autoCapitalize="none"
+              />
+              <Button title="Scan QR instead" variant="ghost" onPress={() => { setManual(false); setError(null); }} />
+            </>
+          ) : null}
           {order ? (
             <Card>
               <Text style={styles.merchantName}>{order.merchantName}</Text>
@@ -286,10 +310,13 @@ export default function PayScreen({ navigation, route }: Props) {
           ) : null}
           <View style={{ flex: 1 }} />
           {order ? (
-            <Button title="Review payment" variant="accent" loading={loading} disabled={!deviceId} onPress={createDraft} />
-          ) : (
-            <Button title="Look up order" loading={loading} disabled={!orderInput.trim()} onPress={lookupOrder} />
-          )}
+            <>
+              <Button title="Review payment" variant="accent" loading={loading} disabled={!deviceId} onPress={createDraft} />
+              <Button title="Scan a different code" variant="ghost" onPress={() => { setOrder(null); setOrderInput(''); setError(null); }} />
+            </>
+          ) : manual ? (
+            <Button title="Look up order" loading={loading} disabled={!orderInput.trim()} onPress={() => lookupOrder()} />
+          ) : null}
           <View style={{ height: spacing.xl }} />
         </View>
       ) : (
