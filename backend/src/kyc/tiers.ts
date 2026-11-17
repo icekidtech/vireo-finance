@@ -25,7 +25,7 @@ export const PERSONAL_TIERS: PersonalTierDef[] = [
   { tier: 0, name: 'Basic', requirements: [{ key: 'phone', label: 'Phone number' }] },
   {
     tier: 1,
-    name: 'Verified',
+    name: 'Standard',
     requirements: [{ key: 'bvn', label: 'BVN, name and date of birth' }],
   },
   {

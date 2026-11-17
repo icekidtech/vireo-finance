@@ -41,7 +41,7 @@ export default function ProfileScreen({ navigation }: Props) {
       <Card style={{ paddingVertical: spacing.sm }}>
         <ListRow
           title="Identity (KYC)"
-          subtitle={kyc.data ? `Tier ${kyc.data.kycTier}` : undefined}
+          subtitle={kyc.data ? (kyc.data.kycTier > 0 ? `Tier ${kyc.data.kycTier}` : 'Not verified yet') : undefined}
           trailing={kyc.data ? <StatusPill status={kyc.data.status} /> : '›'}
           onPress={() => navigation.navigate('Kyc')}
         />

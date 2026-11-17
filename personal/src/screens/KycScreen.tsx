@@ -125,19 +125,20 @@ export default function KycScreen({ navigation }: Props) {
       {data && (
         <Card>
           <ListRow title="Status" trailing={<StatusPill status={tier >= 1 ? 'verified' : data.status} />} />
-          <ListRow title="Your tier" trailing={`Tier ${data.kycTier}`} />
+          <ListRow title="Your tier" trailing={data.kycTier > 0 ? `Tier ${data.kycTier}` : 'Not verified yet'} />
           {data.bvnLast4 ? <ListRow title="BVN" trailing={`•••••••${data.bvnLast4}`} /> : null}
         </Card>
       )}
 
       <Text style={styles.heading}>Tiers and limits</Text>
-      {all?.tiers.tiers.map((t) => (
+      {/* Tier 0 (phone only) is an internal starting point, not something to show or sell. */}
+      {all?.tiers.tiers.filter((t) => t.tier > 0).map((t) => (
         <Card key={t.tier} style={{ marginBottom: spacing.md }}>
           <View style={styles.tierHead}>
             <Text style={styles.tierName}>
               Tier {t.tier} · {t.name}
             </Text>
-            <StatusPill status={t.state === 'completed' ? 'verified' : t.state === 'next' ? 'pending' : 'locked'} />
+            <StatusPill status={t.state === 'completed' ? 'verified' : t.state === 'next' ? (data?.status === 'pending' ? 'pending' : 'not_started') : 'locked'} />
           </View>
           <Text style={styles.limit}>Send up to {formatMoney(t.dailyLimit)} per day</Text>
           {t.requirements.map((r) => (
