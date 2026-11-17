@@ -56,6 +56,17 @@ export class SubmitSettlementDto {
   signature: string;
 }
 
+export class SubmitRegistrationDto {
+  @IsString()
+  @Length(7, 12)
+  cacNumber: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(8, 20)
+  tin?: string;
+}
+
 export class VerifyKybDto {
   @IsIn(['verified', 'rejected'])
   status: 'verified' | 'rejected';

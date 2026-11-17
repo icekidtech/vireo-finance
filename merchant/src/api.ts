@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import type {
   AppNotification,
+  BusinessLevels,
   KycState,
   VerificationOutcome,
   Device,
@@ -136,6 +137,17 @@ export class VireoApi {
   /** Checks name, date of birth and BVN against the bank record. */
   async verifyBvn(input: { bvn: string; firstName: string; lastName: string; dateOfBirth: string }) {
     const { data } = await this.client.post<KycState>('/kyc/bvn', input);
+    return data;
+  }
+
+  async getBusinessLevels() {
+    const { data } = await this.client.get<BusinessLevels>('/merchants/me/levels');
+    return data;
+  }
+
+  /** Level 2: submits the CAC number (and TIN) for review. */
+  async submitRegistration(input: { cacNumber: string; tin?: string }) {
+    const { data } = await this.client.post<BusinessLevels>('/merchants/me/registration', input);
     return data;
   }
 

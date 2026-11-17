@@ -6,6 +6,7 @@ import {
   CreateOrderDto,
   CreateSettlementDraftDto,
   OnboardMerchantDto,
+  SubmitRegistrationDto,
   SubmitSettlementDto,
   UpdateMerchantDto,
   VerifyKybDto,
@@ -46,6 +47,23 @@ export class MerchantController {
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.merchants.getProfile(user.userId);
+  }
+
+  @Get('me/levels')
+  levels(@CurrentUser() user: AuthenticatedUser) {
+    return this.verification.getLevels(user.userId);
+  }
+
+  @Post('me/registration')
+  @HttpCode(200)
+  submitRegistration(@CurrentUser() user: AuthenticatedUser, @Body() dto: SubmitRegistrationDto) {
+    return this.verification.submitRegistration(user.userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @Patch(':id/registration')
+  reviewRegistration(@Param('id') id: string, @Body() dto: VerifyKybDto) {
+    return this.verification.reviewRegistration(id, dto.status);
   }
 
   /** Re-checks whether this merchant now qualifies for automatic verification. */

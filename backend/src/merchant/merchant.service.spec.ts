@@ -213,6 +213,17 @@ function makeService(opts: HarnessOptions = {}) {
   };
 }
 
+describe('MerchantService.createSettlementDraft cash-out limit', () => {
+  it('blocks a cash-out that takes the day over the level-1 limit', async () => {
+    const { service, settlementsRepo, spies } = makeService({ available: 50_000_000n });
+    settlementsRepo.find.mockResolvedValueOnce([{ amount: '15000000' }] as never);
+    await expect(
+      service.createSettlementDraft('user-1', { amount: '60000.00', deviceId: 'device-1' }),
+    ).rejects.toThrow(/Daily cash-out limit/);
+    expect(spies.createHold).not.toHaveBeenCalled();
+  });
+});
+
 describe('MerchantService.createSettlementDraft', () => {
   it('rejects settlement when merchant KYB is not verified', async () => {
     const { service, spies } = makeService({ merchant: makeMerchant({ kybStatus: 'pending' }) });

@@ -18,6 +18,8 @@ import { encryptEmbedding, hmacSha256Hex, parseEncryptionKey } from '../common/c
 import { KycStatus, UserStatus } from '../common/enums';
 import { User } from '../users/user.entity';
 import { BVN_VERIFIER, BvnVerifier } from './bvn-verifier';
+import { PERSONAL_TIERS } from './tiers';
+import { formatMinor } from '../database/money';
 import { KycIdentity } from './kyc-identity.entity';
 import { KycRecord } from './kyc-record.entity';
 import {
@@ -44,6 +46,40 @@ export class KycService {
     private readonly config: ConfigService,
     @Optional() @Inject(BVN_VERIFIER) private readonly bvnVerifier: BvnVerifier | null,
   ) {}
+
+  /**
+   * The ladder of tiers for this user: what each unlocks and what is needed.
+   * A requirement is `available` only when we can really verify it today.
+   */
+  async getTiers(userId: string) {
+    const status = await this.getUserKycStatus(userId);
+    const limits = this.config.get<Record<number, bigint>>('risk.tierDailyLimits') ?? {};
+    const availableNow: Record<string, boolean> = {
+      phone: true,
+      bvn: status.bvnAvailable,
+      nin_id: false, // needs a NIN / ID-document verification vendor
+      address: false, // needs an address-verification vendor
+    };
+    return {
+      currentTier: status.kycTier,
+      tiers: PERSONAL_TIERS.map((def) => ({
+        tier: def.tier,
+        name: def.name,
+        dailyLimit: formatMinor(limits[def.tier] ?? 0n),
+        state:
+          def.tier <= status.kycTier
+            ? 'completed'
+            : def.tier === status.kycTier + 1
+              ? 'next'
+              : 'locked',
+        requirements: def.requirements.map((r) => ({
+          key: r.key,
+          label: r.label,
+          available: availableNow[r.key] ?? false,
+        })),
+      })),
+    };
+  }
 
   private bvnKey(): Buffer | null {
     const raw = this.config.get<string>('kyc.encryptionKey');
@@ -254,8 +290,8 @@ export class KycService {
     }
 
     const tier = dto.tier ? Number.parseInt(dto.tier, 10) : 0;
-    if (!Number.isFinite(tier) || tier < 0 || tier > 2) {
-      throw new BadRequestException('tier must be 0, 1, or 2');
+    if (!Number.isFinite(tier) || tier < 0 || tier > 3) {
+      throw new BadRequestException('tier must be 0, 1, 2, or 3');
     }
 
     const user = await this.users.findOne({ where: { id: record.userId } });

@@ -8,6 +8,7 @@ import type {
   BiometricEnrollment,
   Device,
   KycState,
+  KycTiers,
   MerchantOrder,
   MyAccount,
   OtpRequestResult,
@@ -167,6 +168,11 @@ export class VireoApi {
 
   /* ── KYC ── */
 
+  async getKycTiers() {
+    const { data } = await this.client.get<KycTiers>('/kyc/tiers');
+    return data;
+  }
+
   /** Tier 1: checks name, date of birth and BVN against the bank record. */
   async verifyBvn(input: { bvn: string; firstName: string; lastName: string; dateOfBirth: string }) {
     const { data } = await this.client.post<KycState>('/kyc/bvn', input);
@@ -247,6 +253,12 @@ export class VireoApi {
 
   async listMerchants() {
     const { data } = await this.client.get<AdminMerchant[]>('/merchants');
+    return data;
+  }
+
+  /** Decide a merchant's submitted CAC registration (level 2). */
+  async reviewRegistration(merchantId: string, status: 'verified' | 'rejected') {
+    const { data } = await this.client.patch<AdminMerchant>(`/merchants/${merchantId}/registration`, { status });
     return data;
   }
 

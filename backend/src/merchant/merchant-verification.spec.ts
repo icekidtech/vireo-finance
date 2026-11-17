@@ -23,6 +23,7 @@ function setup(
       merchants as never,
       users as never,
       identities as never,
+      { get: jest.fn() } as never,
     ),
     merchants,
     merchant,
@@ -81,5 +82,74 @@ describe('nameMatches', () => {
   it('requires both names', () => {
     expect(nameMatches('ADA OKAFOR', 'Ada', 'Obi')).toBe(false);
     expect(nameMatches('OBI', 'Ada', 'Obi')).toBe(false);
+  });
+});
+
+describe('business levels', () => {
+  function levelSetup(m: Record<string, unknown>) {
+    const merchant: Record<string, unknown> = {
+      id: 'm1',
+      ownerUserId: 'u1',
+      kybStatus: 'verified',
+      registrationStatus: 'none',
+      ...m,
+    };
+    const merchants = {
+      findOne: jest.fn(async () => merchant),
+      save: jest.fn(async (v: unknown) => v),
+    };
+    const service = new MerchantVerificationService(
+      merchants as never,
+      { findOne: jest.fn() } as never,
+      { findOne: jest.fn() } as never,
+      { get: jest.fn() } as never,
+    );
+    return { service, merchant, merchants };
+  }
+
+  it('reports level 1 for a verified owner and level 2 once the registration is verified', async () => {
+    expect((await levelSetup({}).service.getLevels('u1')).currentLevel).toBe(1);
+    expect(
+      (await levelSetup({ registrationStatus: 'verified' }).service.getLevels('u1')).currentLevel,
+    ).toBe(2);
+    expect((await levelSetup({ kybStatus: 'pending' }).service.getLevels('u1')).currentLevel).toBe(
+      0,
+    );
+  });
+
+  it('accepts a well-formed CAC number as pending review, normalising it', async () => {
+    const { service, merchant } = levelSetup({});
+    await service.submitRegistration('u1', { cacNumber: ' rc 1234567 ', tin: '12345678-0001' });
+    expect(merchant.cacNumber).toBe('RC1234567');
+    expect(merchant.registrationStatus).toBe('pending');
+  });
+
+  it('rejects malformed numbers, an unverified owner and duplicate submissions', async () => {
+    await expect(
+      levelSetup({}).service.submitRegistration('u1', { cacNumber: '12345' }),
+    ).rejects.toThrow(/CAC number/);
+    await expect(
+      levelSetup({}).service.submitRegistration('u1', { cacNumber: 'RC1234567', tin: 'abc' }),
+    ).rejects.toThrow(/TIN/);
+    await expect(
+      levelSetup({ kybStatus: 'pending' }).service.submitRegistration('u1', {
+        cacNumber: 'RC1234567',
+      }),
+    ).rejects.toThrow(/level 1/);
+    await expect(
+      levelSetup({ registrationStatus: 'pending' }).service.submitRegistration('u1', {
+        cacNumber: 'RC1234567',
+      }),
+    ).rejects.toThrow(/already/);
+  });
+
+  it('lets a reviewer decide only on a pending registration', async () => {
+    const pending = levelSetup({ registrationStatus: 'pending' });
+    await expect(pending.service.reviewRegistration('m1', 'verified')).resolves.toMatchObject({
+      registrationStatus: 'verified',
+    });
+    await expect(levelSetup({}).service.reviewRegistration('m1', 'verified')).rejects.toThrow(
+      /no registration/,
+    );
   });
 });

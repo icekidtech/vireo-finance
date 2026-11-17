@@ -37,6 +37,10 @@ export interface AppConfig {
     hashKey: string;
     webhookSecret: string;
   };
+  merchantLimits: {
+    /** Daily cash-out cap per business verification level (minor units). */
+    cashoutDailyLimits: Record<number, bigint>;
+  };
   risk: {
     tierDailyLimits: Record<number, bigint>;
     singleTransferLimit: bigint;
@@ -131,11 +135,18 @@ export default (): AppConfig => ({
     hashKey: process.env.PAGA_HASH_KEY ?? '',
     webhookSecret: process.env.PAGA_WEBHOOK_SECRET ?? '',
   },
+  merchantLimits: {
+    cashoutDailyLimits: {
+      1: BigInt(process.env.MERCHANT_LEVEL1_CASHOUT_DAILY_LIMIT ?? '20000000'),
+      2: BigInt(process.env.MERCHANT_LEVEL2_CASHOUT_DAILY_LIMIT ?? '500000000'),
+    },
+  },
   risk: {
     tierDailyLimits: {
       0: BigInt(process.env.RISK_TIER0_DAILY_LIMIT ?? '2000000'),
       1: BigInt(process.env.RISK_TIER1_DAILY_LIMIT ?? '5000000'),
       2: BigInt(process.env.RISK_TIER2_DAILY_LIMIT ?? '20000000'),
+      3: BigInt(process.env.RISK_TIER3_DAILY_LIMIT ?? '500000000'),
     },
     singleTransferLimit: BigInt(process.env.RISK_SINGLE_TRANSFER_LIMIT ?? '10000000'),
     newPayeeLimit: BigInt(process.env.RISK_NEW_PAYEE_LIMIT ?? '5000000'),

@@ -49,6 +49,17 @@ export default function AdminScreen({ navigation }: Props) {
       { text: 'Reject', style: 'destructive', onPress: () => run(() => api.verifyKyb(id, 'rejected'), merchants.refresh) },
     ]);
 
+  const reviewRegistration = (id: string, name: string, cac: string | null) =>
+    showAlert(
+      `Review ${name}`,
+      `CAC number ${cac ?? '—'}. Confirm the business and its status on the CAC public search before verifying.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Verify registration', onPress: () => run(() => api.reviewRegistration(id, 'verified'), merchants.refresh) },
+        { text: 'Reject', style: 'destructive', onPress: () => run(() => api.reviewRegistration(id, 'rejected'), merchants.refresh) },
+      ],
+    );
+
   return (
     <Screen refreshing={active.refreshing} onRefresh={active.refresh}>
       <Header title="Review queue" onBack={() => navigation.goBack()} />
@@ -87,7 +98,11 @@ export default function AdminScreen({ navigation }: Props) {
             subtitle={`$${m.handle} · ${formatRelative(m.createdAt)}`}
             trailing={<StatusPill status={m.kybStatus} />}
             trailingSub={
-              m.kybStatus === 'pending' ? <Button title="Review" small variant="secondary" onPress={() => reviewKyb(m.id, m.businessName)} /> : undefined
+              m.kybStatus === 'pending' ? (
+                <Button title="Review" small variant="secondary" onPress={() => reviewKyb(m.id, m.businessName)} />
+              ) : m.registrationStatus === 'pending' ? (
+                <Button title="Review CAC" small variant="secondary" onPress={() => reviewRegistration(m.id, m.businessName, m.cacNumber ?? null)} />
+              ) : undefined
             }
           />
         ))

@@ -3,7 +3,7 @@ import { Text, StyleSheet, View } from 'react-native';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
-import { errorMessage, splitFullName } from '../lib/format';
+import { errorMessage, formatMoney, splitFullName } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
 import type { RootStackParamList } from '../navigation';
 import { Button, Card, ErrorBanner, Field, Header, ListRow, Loading, NoticeBanner, Screen, StatusPill } from '../components/ui';
@@ -20,7 +20,11 @@ function formatDob(raw: string): string {
 }
 
 export default function KycScreen({ navigation }: Props) {
-  const { data, loading, error, refreshing, refresh } = useLoad(() => api.getKycStatus(), 'Could not load verification status');
+  const { data: all, loading, error, refreshing, refresh } = useLoad(async () => {
+    const [status, tiers] = await Promise.all([api.getKycStatus(), api.getKycTiers()]);
+    return { status, tiers };
+  }, 'Could not load verification status');
+  const data = all?.status;
   // Pre-filled from the name given at signup; still editable, since the BVN record must match exactly.
   const { user } = useAuth();
   const [firstName, setFirstName] = useState(() => splitFullName(user?.name).firstName);
@@ -58,10 +62,29 @@ export default function KycScreen({ navigation }: Props) {
       {data && (
         <Card>
           <ListRow title="Status" trailing={<StatusPill status={verified ? 'verified' : data.status} />} />
-          <ListRow title="Tier" trailing={String(data.kycTier)} />
+          <ListRow title="Your tier" trailing={`Tier ${data.kycTier}`} />
           {data.bvnLast4 ? <ListRow title="BVN" trailing={`•••••••${data.bvnLast4}`} /> : null}
         </Card>
       )}
+
+      <Text style={styles.heading}>Tiers and limits</Text>
+      {all?.tiers.tiers.map((t) => (
+        <Card key={t.tier} style={{ marginBottom: spacing.md }}>
+          <View style={styles.tierHead}>
+            <Text style={styles.tierName}>
+              Tier {t.tier} · {t.name}
+            </Text>
+            <StatusPill status={t.state === 'completed' ? 'verified' : t.state === 'next' ? 'pending' : 'locked'} />
+          </View>
+          <Text style={styles.limit}>Send up to {formatMoney(t.dailyLimit)} per day</Text>
+          {t.requirements.map((r) => (
+            <Text key={r.key} style={styles.req}>
+              {t.state === 'completed' ? '✓' : '•'} {r.label}
+              {t.state !== 'completed' && !r.available ? '  (not available yet)' : ''}
+            </Text>
+          ))}
+        </Card>
+      ))}
 
       {verified ? (
         <NoticeBanner tone="success" message="Your identity is verified. Your higher limits are active." />
@@ -105,5 +128,10 @@ export default function KycScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   lead: { ...type.body, color: colors.textMuted, marginBottom: spacing.xl },
+  heading: { ...type.heading, color: colors.text, marginTop: spacing.xl, marginBottom: spacing.md },
+  tierHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  tierName: { ...type.bodyStrong, color: colors.text },
+  limit: { ...type.body, color: colors.textMuted, marginVertical: spacing.sm },
+  req: { ...type.caption, color: colors.textMuted, marginTop: 2 },
   consent: { ...type.caption, color: colors.textMuted, marginBottom: spacing.lg },
 });

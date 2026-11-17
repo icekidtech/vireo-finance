@@ -19,6 +19,17 @@ export class Merchant {
   @Column({ type: 'varchar', length: 40, default: 'pending' })
   kybStatus: string;
 
+  /** CAC registration number (RC / BN / IT) submitted for level 2. */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  cacNumber: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  tin: string | null;
+
+  /** none -> pending (submitted) -> verified | rejected, decided by a reviewer. */
+  @Column({ type: 'varchar', length: 20, default: 'none' })
+  registrationStatus: string;
+
   @Column({ type: 'uuid', nullable: true })
   settlementAccountId: string | null;
 

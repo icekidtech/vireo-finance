@@ -19,6 +19,8 @@ export interface Merchant {
   handle: string;
   businessName: string;
   kybStatus: KybStatus | string;
+  registrationStatus?: 'none' | 'pending' | 'verified' | 'rejected' | string;
+  cacNumber?: string | null;
   status: string;
   settlementBankCode: string | null;
   settlementAccountNumber: string | null;
@@ -40,6 +42,23 @@ export interface VerificationOutcome {
   kybStatus: string;
   reason: VerificationReason;
   kycTier: number;
+}
+
+export interface BusinessLevel {
+  level: number;
+  name: string;
+  /** Daily cash-out cap, or null for a level that cannot cash out. */
+  cashoutDailyLimit: string | null;
+  state: 'completed' | 'next' | 'locked';
+  requirements: { key: string; label: string }[];
+}
+
+export interface BusinessLevels {
+  currentLevel: number;
+  registrationStatus: 'none' | 'pending' | 'verified' | 'rejected' | string;
+  cacNumber: string | null;
+  tin: string | null;
+  levels: BusinessLevel[];
 }
 
 export interface AppNotification {

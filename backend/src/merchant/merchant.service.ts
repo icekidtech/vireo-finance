@@ -5,10 +5,12 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { DataSource, EntityManager, In, LessThan, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, LessThan, MoreThanOrEqual, Repository } from 'typeorm';
 import { AccountsService } from '../accounts/accounts.service';
 import { Challenge } from '../challenges/challenge.entity';
 import { ChallengesService } from '../challenges/challenges.service';
@@ -33,6 +35,7 @@ import {
 } from './dto/merchant.dto';
 import { Merchant } from './merchant.entity';
 import { MerchantOrder } from './merchant-order.entity';
+import { BUSINESS_LEVEL_FOR, DEFAULT_CASHOUT_LIMITS } from '../kyc/tiers';
 import { Settlement } from './settlement.entity';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -50,6 +53,7 @@ export class MerchantService {
     private readonly ledger: LedgerService,
     private readonly challenges: ChallengesService,
     private readonly paga: PagaService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   async onboard(userId: string, dto: OnboardMerchantDto) {
@@ -302,6 +306,40 @@ export class MerchantService {
     };
   }
 
+  /** Today's cash-outs (anything not failed) plus this one must fit the level's daily cap. */
+  private async assertWithinCashoutLimit(merchant: Merchant, amount: bigint): Promise<void> {
+    const level = BUSINESS_LEVEL_FOR(
+      merchant.kybStatus === 'verified',
+      merchant.registrationStatus === 'verified',
+    );
+    const limits =
+      this.config?.get<Record<number, bigint>>('merchantLimits.cashoutDailyLimits') ??
+      DEFAULT_CASHOUT_LIMITS;
+    const limit = limits[level] ?? 0n;
+
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const today = await this.settlements.find({
+      where: {
+        merchantId: merchant.id,
+        createdAt: MoreThanOrEqual(startOfDay),
+        status: In([
+          SettlementStatus.DRAFT,
+          SettlementStatus.PENDING,
+          SettlementStatus.PROCESSING,
+          SettlementStatus.COMPLETED,
+        ]),
+      },
+    });
+    const used = today.reduce((sum, s) => sum + BigInt(s.amount), 0n);
+    if (used + amount > limit) {
+      throw new BadRequestException(
+        `Daily cash-out limit for your business level is ${formatMinor(limit)} NGN` +
+          (level < 2 ? '. Register your business to raise it.' : ''),
+      );
+    }
+  }
+
   async createSettlementDraft(userId: string, dto: CreateSettlementDraftDto) {
     const merchant = await this.getByOwner(userId);
     if (merchant.kybStatus !== 'verified') {
@@ -318,6 +356,7 @@ export class MerchantService {
     if (!merchant.settlementBankCode || !merchant.settlementAccountNumber) {
       throw new BadRequestException('Merchant settlement bank details are not set');
     }
+    await this.assertWithinCashoutLimit(merchant, amount);
 
     // Create the draft and reserve funds atomically under the account lock, so
     // concurrent settlements cannot over-reserve or leave an orphaned draft.
@@ -600,6 +639,8 @@ export function presentMerchant(merchant: Merchant) {
     handle: merchant.handle,
     businessName: merchant.businessName,
     kybStatus: merchant.kybStatus,
+    registrationStatus: merchant.registrationStatus,
+    cacNumber: merchant.cacNumber,
     status: merchant.status,
     settlementBankCode: merchant.settlementBankCode,
     settlementAccountNumber: merchant.settlementAccountNumber,

@@ -22,6 +22,12 @@ export class KycController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('tiers')
+  tiers(@CurrentUser() user: AuthenticatedUser) {
+    return this.kyc.getTiers(user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.kyc.getUserKycStatus(user.userId);

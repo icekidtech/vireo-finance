@@ -90,6 +90,26 @@ export interface Device {
   createdAt: string;
 }
 
+export interface TierRequirement {
+  key: string;
+  label: string;
+  /** True only when we can really verify this today. */
+  available: boolean;
+}
+
+export interface KycTier {
+  tier: number;
+  name: string;
+  dailyLimit: string;
+  state: 'completed' | 'next' | 'locked';
+  requirements: TierRequirement[];
+}
+
+export interface KycTiers {
+  currentTier: number;
+  tiers: KycTier[];
+}
+
 export interface KycState {
   userId: string;
   kycTier: number;
@@ -158,6 +178,8 @@ export interface AdminMerchant {
   handle: string;
   businessName: string;
   kybStatus: string;
+  registrationStatus?: string;
+  cacNumber?: string | null;
   status: string;
   createdAt: string;
 }

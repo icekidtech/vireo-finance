@@ -3,7 +3,7 @@ import { Text, StyleSheet, View } from 'react-native';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
-import { errorMessage, splitFullName } from '../lib/format';
+import { errorMessage, formatMoney, splitFullName } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
 import type { VerificationOutcome } from '../types';
 import type { RootStackParamList } from '../navigation';
@@ -35,8 +35,12 @@ const OUTCOME_TEXT: Record<string, { tone: 'warn' | 'success'; message: string }
 /** Identity (BVN) check for the owner, then automatic business verification. */
 export default function VerifyScreen({ navigation }: Props) {
   const { data, loading, error, refreshing, refresh } = useLoad(async () => {
-    const [kyc, merchant] = await Promise.all([api.getKycStatus(), api.getMerchantProfile()]);
-    return { kyc, merchant };
+    const [kyc, merchant, levels] = await Promise.all([
+      api.getKycStatus(),
+      api.getMerchantProfile(),
+      api.getBusinessLevels(),
+    ]);
+    return { kyc, merchant, levels };
   }, 'Could not load your verification status');
   // Pre-filled from the name given at signup; still editable, since the BVN record must match exactly.
   const { user } = useAuth();
@@ -44,6 +48,8 @@ export default function VerifyScreen({ navigation }: Props) {
   const [lastName, setLastName] = useState(() => splitFullName(user?.name).lastName);
   const [dob, setDob] = useState('');
   const [bvn, setBvn] = useState('');
+  const [cac, setCac] = useState('');
+  const [tin, setTin] = useState('');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<VerificationOutcome | null>(null);
@@ -89,10 +95,61 @@ export default function VerifyScreen({ navigation }: Props) {
         {kyc?.bvnLast4 ? <ListRow title="BVN" trailing={`•••••••${kyc.bvnLast4}`} /> : null}
       </Card>
 
+      <Text style={styles.heading}>Business levels</Text>
+      {data?.levels.levels
+        .filter((l) => l.level > 0)
+        .map((l) => (
+          <Card key={l.level} style={{ marginBottom: spacing.md }}>
+            <View style={styles.levelHead}>
+              <Text style={styles.levelName}>
+                Level {l.level} · {l.name}
+              </Text>
+              <StatusPill status={l.state === 'completed' ? 'verified' : l.state === 'next' ? 'pending' : 'locked'} />
+            </View>
+            {l.cashoutDailyLimit ? (
+              <Text style={styles.limit}>Cash out up to {formatMoney(l.cashoutDailyLimit)} per day</Text>
+            ) : null}
+            {l.requirements.map((r) => (
+              <Text key={r.key} style={styles.req}>
+                {l.state === 'completed' ? '✓' : '•'} {r.label}
+              </Text>
+            ))}
+          </Card>
+        ))}
+
       {shown ? <NoticeBanner tone={shown.tone} message={shown.message} /> : null}
 
       {kyb === 'verified' ? (
-        <NoticeBanner tone="success" message="Your business is verified." />
+        <View style={{ marginTop: spacing.md }}>
+          {data?.levels.currentLevel === 2 ? (
+            <NoticeBanner tone="success" message="Your business registration is verified." />
+          ) : data?.levels.registrationStatus === 'pending' ? (
+            <NoticeBanner message={`Your registration (${data.levels.cacNumber}) is being reviewed. We'll update your level when it's done.`} />
+          ) : (
+            <>
+              {data?.levels.registrationStatus === 'rejected' ? (
+                <NoticeBanner message="Your last registration submission was not accepted. Check the number and submit again." />
+              ) : null}
+              <Text style={styles.lead}>
+                Register your business to raise your daily cash-out limit. Enter your CAC number; we confirm it on the
+                CAC register.
+              </Text>
+              <Field label="CAC NUMBER" placeholder="RC1234567" value={cac} onChangeText={(v) => setCac(v.toUpperCase())} autoCapitalize="characters" maxLength={12} hint="RC for companies, BN for business names, IT for incorporated trustees." />
+              <Field label="TIN (OPTIONAL)" placeholder="12345678-0001" value={tin} onChangeText={setTin} keyboardType="number-pad" maxLength={20} />
+              <Button
+                title="Submit for review"
+                variant="accent"
+                loading={busy}
+                disabled={!/^(RC|BN|IT)\s?\d{5,8}$/i.test(cac.trim())}
+                onPress={() =>
+                  run(async () => {
+                    await api.submitRegistration({ cacNumber: cac.trim(), tin: tin.trim() || undefined });
+                  }, 'Could not submit your registration')
+                }
+              />
+            </>
+          )}
+        </View>
       ) : identityDone ? (
         <View style={{ marginTop: spacing.lg }}>
           <Text style={styles.lead}>
@@ -134,5 +191,10 @@ export default function VerifyScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   lead: { ...type.body, color: colors.textMuted, marginBottom: spacing.xl },
+  heading: { ...type.heading, color: colors.text, marginTop: spacing.xl, marginBottom: spacing.md },
+  levelHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  levelName: { ...type.bodyStrong, color: colors.text },
+  limit: { ...type.body, color: colors.textMuted, marginVertical: spacing.sm },
+  req: { ...type.caption, color: colors.textMuted, marginTop: 2 },
   consent: { ...type.caption, color: colors.textMuted, marginBottom: spacing.lg },
 });
