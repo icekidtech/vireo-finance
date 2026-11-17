@@ -42,6 +42,10 @@ export interface AppConfig {
     velocityCount: number;
     velocityWindowMinutes: number;
   };
+  openai: {
+    apiKey: string;
+    model: string;
+  };
   notifications: {
     sms?: {
       enabled?: boolean;
@@ -115,6 +119,10 @@ export default (): AppConfig => ({
     newPayeeLimit: BigInt(process.env.RISK_NEW_PAYEE_LIMIT ?? '5000000'),
     velocityCount: int(process.env.RISK_VELOCITY_COUNT, 10),
     velocityWindowMinutes: int(process.env.RISK_VELOCITY_WINDOW_MINUTES, 10),
+  },
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY ?? '',
+    model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
   },
   notifications: {
     sms: {

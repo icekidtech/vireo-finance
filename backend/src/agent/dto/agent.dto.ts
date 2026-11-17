@@ -1,4 +1,4 @@
-import { IsIn, IsObject, IsOptional, IsUUID } from 'class-validator';
+import { IsIn, IsObject, IsOptional, IsString, IsUUID, Length } from 'class-validator';
 
 export const AGENT_TOOLS = [
   'get_balance',
@@ -24,3 +24,22 @@ export class RunAgentToolDto {
 }
 
 export class CreateAgentSessionDto {}
+
+export class ChatMessageDto {
+  @IsOptional()
+  @IsUUID()
+  sessionId?: string;
+
+  @IsString()
+  @Length(1, 2000)
+  message: string;
+
+  /**
+   * The caller's registered signing device. Needed so a transfer draft the
+   * assistant prepares can be approved (signed) on that phone. Never taken
+   * from the model.
+   */
+  @IsOptional()
+  @IsUUID()
+  deviceId?: string;
+}

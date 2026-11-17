@@ -58,6 +58,12 @@ async function createAndStoreKey(): Promise<string> {
   return privateKeyHex;
 }
 
+/** Forgets this phone's key + registration (used after the device is revoked). */
+export async function clearDeviceRegistration(): Promise<void> {
+  await SecureStore.deleteItemAsync(PRIVATE_KEY_STORE);
+  await SecureStore.deleteItemAsync(DEVICE_ID_STORE);
+}
+
 export async function getDeviceId(): Promise<string | null> {
   return SecureStore.getItemAsync(DEVICE_ID_STORE);
 }

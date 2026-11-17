@@ -1,15 +1,51 @@
 import axios, { AxiosInstance } from 'axios';
+import type {
+  Device,
+  Merchant,
+  MerchantDashboard,
+  MerchantOrder,
+  OtpRequestResult,
+  PublicUser,
+  Settlement,
+  SettlementDraft,
+  VerifyOtpResult,
+} from './types';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3050/api/v1';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3050/api/v1';
+
+export interface OnboardMerchantInput {
+  businessName: string;
+  handle: string;
+  settlementBankCode?: string;
+  settlementAccountNumber?: string;
+  settlementAccountName?: string;
+}
 
 export class VireoApi {
   private client: AxiosInstance;
+  private onUnauthorized: (() => void) | null = null;
 
   constructor(baseURL: string = API_BASE_URL) {
     this.client = axios.create({
       baseURL,
+      timeout: 20_000,
       headers: { 'Content-Type': 'application/json' },
     });
+    // An expired or revoked token must drop the user back to sign-in instead
+    // of leaving every screen showing an opaque error.
+    this.client.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error?.response?.status === 401 && this.client.defaults.headers.common['Authorization']) {
+          this.onUnauthorized?.();
+        }
+        return Promise.reject(error);
+      },
+    );
+  }
+
+  setUnauthorizedHandler(handler: (() => void) | null) {
+    this.onUnauthorized = handler;
   }
 
   setToken(token: string) {
@@ -20,28 +56,35 @@ export class VireoApi {
     delete this.client.defaults.headers.common['Authorization'];
   }
 
+  /* ── Auth ── */
+
   async register(phone: string, name: string, handle?: string) {
     const { data } = await this.client.post('/auth/register', { phone, name, handle });
-    return data;
+    return data as { user: PublicUser; created: boolean };
   }
 
   async requestOtp(phone: string) {
-    const { data } = await this.client.post('/auth/otp/request', { phone });
+    const { data } = await this.client.post<OtpRequestResult>('/auth/otp/request', { phone });
     return data;
   }
 
   async verifyOtp(phone: string, code: string) {
-    const { data } = await this.client.post('/auth/otp/verify', { phone, code });
+    const { data } = await this.client.post<VerifyOtpResult>('/auth/otp/verify', { phone, code });
     return data;
   }
 
   async getProfile() {
-    const { data } = await this.client.get('/auth/me');
+    const { data } = await this.client.get<PublicUser>('/auth/me');
     return data;
   }
 
-  async registerDevice(publicKey: string, platform: string, algorithm?: string, attestationToken?: string) {
-    const { data } = await this.client.post('/auth/devices', {
+  async registerDevice(
+    publicKey: string,
+    platform: string,
+    algorithm?: string,
+    attestationToken?: string,
+  ) {
+    const { data } = await this.client.post<Device>('/auth/devices', {
       publicKey,
       platform,
       algorithm,
@@ -50,61 +93,86 @@ export class VireoApi {
     return data;
   }
 
-  async onboardMerchant(businessName: string, handle: string, settlementBankCode?: string, settlementAccountNumber?: string, settlementAccountName?: string) {
-    const { data } = await this.client.post('/merchants', {
-      businessName,
-      handle,
-      settlementBankCode,
-      settlementAccountNumber,
-      settlementAccountName,
-    });
+  async listDevices() {
+    const { data } = await this.client.get<Device[]>('/auth/devices');
+    return data;
+  }
+
+  async revokeDevice(deviceId: string) {
+    const { data } = await this.client.post<Device>(`/auth/devices/${deviceId}/revoke`);
+    return data;
+  }
+
+  /* ── Merchant ── */
+
+  async onboardMerchant(input: OnboardMerchantInput) {
+    const { data } = await this.client.post<Merchant>('/merchants', input);
     return data;
   }
 
   async getMerchantProfile() {
-    const { data } = await this.client.get('/merchants/me');
+    const { data } = await this.client.get<Merchant>('/merchants/me');
     return data;
   }
 
   async getDashboard() {
-    const { data } = await this.client.get('/merchants/dashboard');
+    const { data } = await this.client.get<MerchantDashboard>('/merchants/dashboard');
     return data;
   }
 
-  async createOrder(amount: string, note?: string) {
-    const { data } = await this.client.post('/merchants/orders', { amount, note });
+  async createOrder(amount: string, note?: string, expiresInSeconds?: number) {
+    const { data } = await this.client.post<MerchantOrder>('/merchants/orders', {
+      amount,
+      note,
+      expiresInSeconds,
+    });
     return data;
   }
 
-  /** Public order lookup by reference — also used to poll for payment. */
+  /** Order lookup by reference — also used to poll for payment. */
   async getOrder(reference: string) {
-    const { data } = await this.client.get(`/merchant-orders/${reference}`);
+    const { data } = await this.client.get<MerchantOrder>(`/merchant-orders/${reference}`);
     return data;
   }
 
   async listOrders() {
-    const { data } = await this.client.get('/merchants/orders');
+    const { data } = await this.client.get<MerchantOrder[]>('/merchants/orders');
     return data;
   }
 
   async cancelOrder(reference: string) {
-    const { data } = await this.client.post(`/merchants/orders/${reference}/cancel`);
+    const { data } = await this.client.post<MerchantOrder>(`/merchants/orders/${reference}/cancel`);
     return data;
   }
 
+  /* ── Settlements ── */
+
   async createSettlementDraft(deviceId: string, amount?: string) {
-    const { data } = await this.client.post('/merchants/settlements/drafts', { amount, deviceId });
+    const { data } = await this.client.post<SettlementDraft>('/merchants/settlements/drafts', {
+      amount,
+      deviceId,
+    });
     return data;
   }
 
   async submitSettlement(settlementId: string, signature: string) {
-    const { data } = await this.client.post(`/merchants/settlements/${settlementId}/submit`, { signature });
+    const { data } = await this.client.post<Settlement>(
+      `/merchants/settlements/${settlementId}/submit`,
+      { signature },
+    );
     return data;
   }
 
   async listSettlements() {
-    const { data } = await this.client.get('/merchants/settlements');
+    const { data } = await this.client.get<Settlement[]>('/merchants/settlements');
     return data;
+  }
+
+  /* ── Biometrics (terminal payments) ── */
+
+  /** Raw access for endpoints still being wired (terminal payment). */
+  get http() {
+    return this.client;
   }
 }
 

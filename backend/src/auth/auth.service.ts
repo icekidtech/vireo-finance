@@ -199,6 +199,7 @@ export function toPublicUser(user: User) {
     name: user.name,
     kycTier: user.kycTier,
     status: user.status,
+    role: user.role,
     createdAt: user.createdAt,
   };
 }

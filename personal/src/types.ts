@@ -1,0 +1,126 @@
+/** Response shapes, mirroring backend presenters. */
+
+export type TransferType = 'internal' | 'bank' | 'merchant' | 'paga_wallet';
+export type TransferStatus = 'draft' | 'pending' | 'completed' | 'failed' | 'reversed';
+export type KycStatus = 'pending' | 'verified' | 'rejected';
+
+export interface PublicUser {
+  id: string;
+  phone: string;
+  handle: string | null;
+  name: string;
+  kycTier: number;
+  status?: string;
+}
+
+export interface MyAccount {
+  accountId: string;
+  currency: string;
+  balance: string;
+  held: string;
+  available: string;
+  virtualAccount: { accountNumber: string; bankName: string; status: string } | null;
+}
+
+export interface Transfer {
+  id: string;
+  type: TransferType;
+  status: TransferStatus;
+  amount: string;
+  fee: string;
+  currency: string;
+  recipientName: string | null;
+  recipientPhone: string | null;
+  recipientBankCode: string | null;
+  recipientAccountNumber: string | null;
+  pagaReference: string | null;
+  failureReason: string | null;
+  challengeId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Challenge {
+  id: string;
+  type: string;
+  nonce: string;
+  payload: Record<string, unknown>;
+  payloadHash: string;
+  expiresAt: string;
+}
+
+export interface TransferDraft {
+  transfer: Transfer;
+  challenge: Challenge | null;
+}
+
+export interface ActivityItem {
+  id: string;
+  type: string;
+  direction: 'in' | 'out';
+  amount: string;
+  currency: string;
+  counterparty: string;
+  transferId: string | null;
+  reference: string;
+  createdAt: string;
+}
+
+export interface MerchantOrder {
+  id: string;
+  reference: string;
+  merchantHandle: string;
+  merchantName: string;
+  amount: string;
+  currency: string;
+  status: 'open' | 'paid' | 'expired' | 'cancelled';
+  note: string | null;
+  expiresAt: string | null;
+  qrPayload: string;
+  createdAt: string;
+}
+
+export interface Device {
+  id: string;
+  platform: string;
+  algorithm: string;
+  status: string;
+  attestationState?: string;
+  createdAt: string;
+}
+
+export interface KycState {
+  userId: string;
+  kycTier: number;
+  status: KycStatus;
+}
+
+export interface BiometricEnrollment {
+  id: string;
+  type: 'face' | 'voice';
+  status: string;
+  qualityScore: number | null;
+  modelVersion?: string;
+  createdAt: string;
+  revokedAt?: string | null;
+}
+
+export interface BiometricAttempt {
+  id: string;
+  type: string;
+  result: string;
+  context: string;
+  matchScore: number | null;
+  livenessScore: number | null;
+  createdAt: string;
+}
+
+export interface OtpRequestResult {
+  expiresIn: number;
+  devCode?: string;
+}
+
+export interface VerifyOtpResult {
+  accessToken: string;
+  user: PublicUser;
+}

@@ -64,3 +64,26 @@ export class VerifyKybDto {
   @IsIn(['verified', 'rejected'])
   status: 'verified' | 'rejected';
 }
+
+export class UpdateMerchantDto {
+  @IsOptional()
+  @IsString()
+  @Length(2, 160)
+  businessName?: string;
+
+  /** Bank details change together or not at all, so a payout never mixes two accounts. */
+  @IsOptional()
+  @IsString()
+  @Length(2, 16)
+  settlementBankCode?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(6, 32)
+  settlementAccountNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(2, 120)
+  settlementAccountName?: string;
+}

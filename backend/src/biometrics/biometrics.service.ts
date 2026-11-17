@@ -4,26 +4,16 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
+  NotImplementedException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource, EntityManager } from 'typeorm';
+import { Repository, DataSource, EntityManager, MoreThan } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import {
-  BiometricEnrollment,
-  BiometricType,
-  BiometricStatus,
-} from './biometric-enrollment.entity';
-import {
-  BiometricConsent,
-  ConsentStatus,
-  ConsentPurpose,
-} from './biometric-consent.entity';
-import {
-  BiometricAttempt,
-  AttemptResult,
-  AttemptContext,
-} from './biometric-attempt.entity';
+import { BiometricEnrollment, BiometricType, BiometricStatus } from './biometric-enrollment.entity';
+import { BiometricConsent, ConsentStatus, ConsentPurpose } from './biometric-consent.entity';
+import { BiometricAttempt, AttemptResult, AttemptContext } from './biometric-attempt.entity';
 import { User } from '../users/user.entity';
 import {
   EnrollBiometricDto,
@@ -40,8 +30,10 @@ interface BiometricScores {
   qualityScore: number;
 }
 
-interface FusionResult {
+export interface FusionResult {
   decision: AttemptResult;
+  /** Resolved customer, set whenever the identifier matched a user. */
+  userId?: string;
   scores: BiometricScores;
   matchedEnrollmentId?: string;
   reason?: string;
@@ -109,10 +101,12 @@ export class BiometricsService {
       );
 
       // Revoke all active biometric enrollments
-      await manager.getRepository(BiometricEnrollment).update(
-        { userId, status: BiometricStatus.ACTIVE },
-        { status: BiometricStatus.REVOKED, revokedAt: new Date() },
-      );
+      await manager
+        .getRepository(BiometricEnrollment)
+        .update(
+          { userId, status: BiometricStatus.ACTIVE },
+          { status: BiometricStatus.REVOKED, revokedAt: new Date() },
+        );
     });
 
     this.logger.log(`Consent and enrollments revoked for user ${userId}`);
@@ -122,6 +116,7 @@ export class BiometricsService {
    * Enroll a new biometric (face or voice).
    */
   async enroll(userId: string, dto: EnrollBiometricDto): Promise<BiometricEnrollment> {
+    this.assertProviderReady();
     // Verify consent exists and is active
     const consent = await this.consents.findOne({
       where: { id: dto.consentId, userId, status: ConsentStatus.GRANTED },
@@ -170,6 +165,7 @@ export class BiometricsService {
    * Returns a decision: approved, denied, or step_up.
    */
   async verify(dto: VerifyBiometricDto, context: AttemptContext): Promise<FusionResult> {
+    this.assertProviderReady();
     // Look up user by identifier (phone or handle)
     const user = await this.findUserByIdentifier(dto.identifier);
     if (!user) {
@@ -183,15 +179,29 @@ export class BiometricsService {
       });
     }
 
+    // Lock out a customer after repeated denials so a terminal cannot be used
+    // to brute-force or probe their biometrics.
+    if (await this.isLockedOut(user.id)) {
+      return {
+        decision: AttemptResult.DENIED,
+        userId: user.id,
+        scores: { matchScore: 0, livenessScore: 0, spoofScore: 0, qualityScore: 0 },
+        reason: 'Too many failed attempts',
+      };
+    }
+
     // Check if user has active consent
     const hasConsent = await this.hasActiveConsent(user.id);
     if (!hasConsent) {
-      return this.logAttempt(user.id, dto.type, AttemptResult.DENIED, context, {
-        matchScore: 0,
-        livenessScore: 0,
-        spoofScore: 0,
-        qualityScore: 0,
-      });
+      return {
+        ...(await this.logAttempt(user.id, dto.type, AttemptResult.DENIED, context, {
+          matchScore: 0,
+          livenessScore: 0,
+          spoofScore: 0,
+          qualityScore: 0,
+        })),
+        userId: user.id,
+      };
     }
 
     // Get active enrollments for this user and type
@@ -200,12 +210,15 @@ export class BiometricsService {
     });
 
     if (enrollments.length === 0) {
-      return this.logAttempt(user.id, dto.type, AttemptResult.DENIED, context, {
-        matchScore: 0,
-        livenessScore: 0,
-        spoofScore: 0,
-        qualityScore: 0,
-      });
+      return {
+        ...(await this.logAttempt(user.id, dto.type, AttemptResult.DENIED, context, {
+          matchScore: 0,
+          livenessScore: 0,
+          spoofScore: 0,
+          qualityScore: 0,
+        })),
+        userId: user.id,
+      };
     }
 
     // Process the verification sample
@@ -229,7 +242,7 @@ export class BiometricsService {
       dto.metadata,
     );
 
-    return fusionResult;
+    return { ...fusionResult, userId: user.id };
   }
 
   /**
@@ -411,6 +424,37 @@ export class BiometricsService {
     return { decision: result, scores, matchedEnrollmentId };
   }
 
+  /**
+   * The mock provider returns passing scores for any sample, so it must never
+   * back real money movement. Outside production it is allowed for development.
+   */
+  private assertProviderReady(): void {
+    const provider = (process.env.BIOMETRIC_PROVIDER ?? 'mock').toLowerCase();
+    if (provider === 'mock') {
+      if (process.env.NODE_ENV === 'production') {
+        throw new ServiceUnavailableException('Biometric verification is not available');
+      }
+      return;
+    }
+    // No adapter exists for any other provider yet: fail closed rather than
+    // silently falling back to the mock scorer.
+    throw new NotImplementedException(`Biometric provider "${provider}" is not implemented`);
+  }
+
+  private async isLockedOut(userId: string): Promise<boolean> {
+    const windowMinutes = parseInt(process.env.BIOMETRIC_LOCKOUT_WINDOW_MINUTES ?? '15', 10);
+    const maxDenials = parseInt(process.env.BIOMETRIC_LOCKOUT_MAX_DENIALS ?? '5', 10);
+    const denials = await this.attempts.count({
+      where: {
+        userId,
+        result: AttemptResult.DENIED,
+        context: AttemptContext.PAYMENT,
+        createdAt: MoreThan(new Date(Date.now() - windowMinutes * 60_000)),
+      },
+    });
+    return denials >= maxDenials;
+  }
+
   private async findUserByIdentifier(identifier: string): Promise<User | null> {
     const trimmed = identifier.trim();
     // Try phone number first
@@ -483,13 +527,21 @@ Your biometric data is encrypted, never shared with third parties, and used only
   private mockFaceEmbedding(sampleBase64: string): string {
     // Placeholder: in production, return actual 128-d or 512-d face embedding
     const hash = sampleBase64.slice(0, 64);
-    return JSON.stringify({ type: 'face', hash, vector: new Array(128).fill(0).map(() => Math.random()) });
+    return JSON.stringify({
+      type: 'face',
+      hash,
+      vector: new Array(128).fill(0).map(() => Math.random()),
+    });
   }
 
   private mockVoiceEmbedding(sampleBase64: string): string {
     // Placeholder: in production, return actual i-vector or x-vector
     const hash = sampleBase64.slice(0, 64);
-    return JSON.stringify({ type: 'voice', hash, vector: new Array(256).fill(0).map(() => Math.random()) });
+    return JSON.stringify({
+      type: 'voice',
+      hash,
+      vector: new Array(256).fill(0).map(() => Math.random()),
+    });
   }
 
   private mockVerification(

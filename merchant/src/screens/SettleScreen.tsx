@@ -1,185 +1,182 @@
-import { useEffect, useState } from 'react';
-import { View, Text, TextInput, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
+import { useCallback, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
 import { approveAndSign, ensureDeviceRegistered } from '../lib/deviceKey';
-import type { StackScreenProps } from '@react-navigation/stack';
+import { errorMessage, formatMoney, groupAmountInput } from '../lib/format';
+import { useLoad } from '../lib/useLoad';
+import type { SettlementDraft, Settlement } from '../types';
 import type { RootStackParamList } from '../navigation';
+import {
+  BigMoney,
+  Button,
+  Card,
+  ErrorBanner,
+  Header,
+  Keypad,
+  ListRow,
+  Loading,
+  NoticeBanner,
+  Screen,
+  StatusPill,
+  applyKey,
+} from '../components/ui';
+import { colors, spacing, type } from '../theme';
 
-type SettleScreenProps = StackScreenProps<RootStackParamList, 'Settle'>;
+type Props = StackScreenProps<RootStackParamList, 'Settle'>;
+type Stage = 'amount' | 'confirm' | 'done';
 
-type Stage = 'form' | 'confirm' | 'done';
-
-export default function SettleScreen({ navigation }: SettleScreenProps) {
+export default function SettleScreen({ navigation }: Props) {
+  const dash = useLoad(() => api.getDashboard(), 'Could not load your balance');
   const [amount, setAmount] = useState('');
-  const [stage, setStage] = useState<Stage>('form');
-  const [draft, setDraft] = useState<any | null>(null);
-  const [result, setResult] = useState<any | null>(null);
+  const [stage, setStage] = useState<Stage>('amount');
+  const [draft, setDraft] = useState<SettlementDraft | null>(null);
+  const [result, setResult] = useState<Settlement | null>(null);
   const [biometric, setBiometric] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [kybStatus, setKybStatus] = useState<string | null>(null);
 
-  useEffect(() => {
-    api.getMerchantProfile().then((p: any) => setKybStatus(p.kybStatus)).catch(() => {});
-  }, []);
+  const merchant = dash.data?.merchant;
+  const available = dash.data?.balance.available ?? '0.00';
+  const kybBlocked = !!merchant && merchant.kybStatus !== 'verified';
+  const noBank = !!merchant && (!merchant.settlementBankCode || !merchant.settlementAccountNumber);
 
-  const kybBlocked = kybStatus !== null && kybStatus !== 'verified';
+  const numeric = Number(amount || '0');
+  const valid = amount !== '' && numeric > 0 && numeric <= Number(available);
 
-  const startOver = () => {
-    setStage('form');
-    setDraft(null);
-    setResult(null);
-    setError(null);
-    setBiometric(true);
-  };
-
-  const review = async () => {
+  const review = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const deviceId = await ensureDeviceRegistered();
-      const data = await api.createSettlementDraft(deviceId, amount.trim() || undefined);
+      const data = await api.createSettlementDraft(deviceId, amount.replace(/\.$/, '') || undefined);
       setDraft(data);
       setStage('confirm');
-    } catch (e: any) {
-      setError(e.response?.data?.message || e.message || 'Could not prepare the settlement');
+    } catch (e) {
+      setError(errorMessage(e, 'Could not prepare the payout'));
+    } finally {
+      setLoading(false);
+    }
+  }, [amount]);
+
+  const approve = async () => {
+    if (!draft) return;
+    setLoading(true);
+    setError(null);
+    try {
+      // The phone's biometric unlocks the device key, which signs the exact
+      // payloadHash the server issued.
+      const approval = await approveAndSign(draft.challenge.payloadHash);
+      setBiometric(approval.biometric);
+      setResult(await api.submitSettlement(draft.settlement.id, approval.signature));
+      setStage('done');
+    } catch (e) {
+      setError(errorMessage(e, 'Payout failed'));
     } finally {
       setLoading(false);
     }
   };
 
-  const approve = async () => {
-    if (!draft?.challenge || !draft?.settlement) return;
-    setLoading(true);
+  const reset = () => {
+    setStage('amount');
+    setDraft(null);
+    setResult(null);
+    setAmount('');
     setError(null);
-    try {
-      const approval = await approveAndSign(draft.challenge.payloadHash);
-      setBiometric(approval.biometric);
-      const data = await api.submitSettlement(draft.settlement.id, approval.signature);
-      setResult(data);
-      setStage('done');
-    } catch (e: any) {
-      setError(e.response?.data?.message || e.message || 'Settlement failed');
-    } finally {
-      setLoading(false);
-    }
+    dash.refresh();
   };
+
+  if (dash.loading && !dash.data) return <Loading />;
 
   if (stage === 'done' && result) {
     const failed = result.status === 'failed';
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Settle to Bank</Text>
-        <View style={[styles.card, failed ? styles.cardFailed : styles.cardOk]}>
-          <Text style={styles.cardAmount}>NGN {result.amount}</Text>
-          <Text style={styles.cardStatus}>{statusLabel(result.status)}</Text>
-          {result.failureReason ? <Text style={styles.cardNote}>{result.failureReason}</Text> : null}
-          {result.status === 'processing' ? (
-            <Text style={styles.cardNote}>Paga is processing the payout. It will complete shortly.</Text>
-          ) : null}
+      <Screen background={failed ? colors.bg : colors.accent}>
+        <View style={styles.done}>
+          <Text style={styles.doneTitle}>
+            {failed ? 'Payout failed' : result.status === 'completed' ? 'Cashed out' : 'Payout on its way'}
+          </Text>
+          <BigMoney amount={result.amount} color={colors.black} />
+          <View style={{ marginTop: spacing.lg }}>
+            <StatusPill status={result.status} />
+          </View>
+          {result.failureReason ? <Text style={styles.reason}>{result.failureReason}</Text> : null}
+          {!biometric && (
+            <NoticeBanner message="No biometric hardware on this device, so approval was not biometric-gated." />
+          )}
         </View>
-        {!biometric && <Text style={styles.warn}>Approved without biometrics (no hardware on this device).</Text>}
-        <TouchableOpacity style={styles.primary} onPress={startOver}>
-          <Text style={styles.primaryText}>Settle again</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.link} onPress={() => navigation.goBack()}>
-          <Text style={styles.linkText}>Back to Dashboard</Text>
-        </TouchableOpacity>
-      </View>
+        <Button title="Done" onPress={() => navigation.goBack()} />
+        <Button title="Cash out again" variant="ghost" onPress={reset} />
+      </Screen>
     );
   }
 
   if (stage === 'confirm' && draft) {
-    const payload = draft.challenge?.payload ?? {};
+    const p = draft.challenge.payload as Record<string, string>;
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Confirm settlement</Text>
-        {error && <Text style={styles.error}>{error}</Text>}
-        <View style={styles.card}>
-          <Text style={styles.cardAmount}>NGN {draft.settlement.amount}</Text>
-          <Text style={styles.cardNote}>To {payload.accountName ?? 'your bank account'}</Text>
-          <Text style={styles.cardNote}>
-            {payload.accountNumber ?? ''} {payload.bankCode ? `· bank ${payload.bankCode}` : ''}
-          </Text>
+      <Screen>
+        <Header title="Confirm cash out" onBack={() => { setStage('amount'); setDraft(null); }} />
+        <ErrorBanner message={error} />
+        <View style={styles.confirmTop}>
+          <BigMoney amount={draft.settlement.amount} />
         </View>
-        <Text style={styles.hint}>Approve with your biometric to send this payout to your bank.</Text>
-        <TouchableOpacity style={styles.primary} onPress={approve} disabled={loading}>
-          <Text style={styles.primaryText}>{loading ? 'Approving…' : 'Approve & settle'}</Text>
-        </TouchableOpacity>
-        {loading && <ActivityIndicator size="small" style={styles.spinner} />}
-        <TouchableOpacity style={styles.link} onPress={startOver} disabled={loading}>
-          <Text style={styles.linkText}>Cancel</Text>
-        </TouchableOpacity>
-      </View>
+        <Card>
+          <ListRow title="To" trailing={p.accountName} />
+          <ListRow title="Account" trailing={p.accountNumber} />
+          <ListRow title="Bank code" trailing={p.bankCode} />
+          <ListRow title="Fee" trailing={formatMoney('0')} />
+        </Card>
+        <Text style={styles.hint}>Approve with your fingerprint or face to sign this payout.</Text>
+        <Button title="Approve & cash out" variant="accent" onPress={approve} loading={loading} />
+      </Screen>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Settle to Bank</Text>
-      {error && <Text style={styles.error}>{error}</Text>}
-      {kybBlocked && (
-        <View style={styles.kybBanner}>
-          <Text style={styles.kybText}>
-            Business verification is {kybStatus}. Settlements unlock once your business has been
-            verified.
-          </Text>
+    <Screen scroll={false} padded={false}>
+      <View style={{ paddingHorizontal: spacing.xl }}>
+        <Header title="Cash out" onBack={() => navigation.goBack()} />
+      </View>
+      <View style={styles.entry}>
+        <Text style={styles.availLabel}>Available {formatMoney(available)}</Text>
+        <Text style={[styles.amount, amount === '' && { color: colors.textFaint }]} numberOfLines={1} adjustsFontSizeToFit>
+          ₦{groupAmountInput(amount)}
+        </Text>
+        <TouchableOpacity onPress={() => setAmount(available)}>
+          <Text style={styles.all}>Cash out everything</Text>
+        </TouchableOpacity>
+        <View style={{ paddingHorizontal: spacing.xl, marginTop: spacing.lg, width: '100%' }}>
+          <ErrorBanner message={error ?? dash.error} />
+          {kybBlocked && (
+            <NoticeBanner message="Cash out unlocks once your business is verified." />
+          )}
+          {!kybBlocked && noBank && (
+            <NoticeBanner message="Add your settlement bank details before cashing out." />
+          )}
         </View>
-      )}
-      <Text style={styles.label}>Amount (NGN)</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Leave empty for full balance"
-        value={amount}
-        onChangeText={setAmount}
-        keyboardType="numeric"
-        editable={!loading}
-      />
-      <TouchableOpacity style={styles.primary} onPress={review} disabled={loading || kybBlocked}>
-        <Text style={styles.primaryText}>{loading ? 'Preparing…' : 'Review settlement'}</Text>
-      </TouchableOpacity>
-      {loading && <ActivityIndicator size="small" style={styles.spinner} />}
-      <TouchableOpacity style={styles.link} onPress={() => navigation.goBack()}>
-        <Text style={styles.linkText}>Back to Dashboard</Text>
-      </TouchableOpacity>
-    </View>
+      </View>
+      <Keypad onKey={(k) => setAmount((a) => applyKey(a, k))} />
+      <View style={{ padding: spacing.xl }}>
+        <Button
+          title="Review"
+          variant="accent"
+          onPress={review}
+          loading={loading}
+          disabled={!valid || kybBlocked || noBank}
+        />
+      </View>
+    </Screen>
   );
 }
 
-function statusLabel(status: string): string {
-  switch (status) {
-    case 'completed':
-      return 'Paid out to your bank';
-    case 'processing':
-      return 'Processing';
-    case 'pending':
-      return 'Submitted';
-    case 'failed':
-      return 'Failed';
-    default:
-      return status;
-  }
-}
-
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 16 },
-  error: { color: 'red', marginBottom: 12 },
-  warn: { color: '#B26A00', fontSize: 13, marginBottom: 12 },
-  kybBanner: { backgroundColor: '#FFF4E0', borderRadius: 8, padding: 12, marginBottom: 12 },
-  kybText: { color: '#8A5A00', fontSize: 13 },
-  label: { fontSize: 14, color: '#666', marginTop: 12, marginBottom: 4 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 16 },
-  hint: { color: '#666', fontSize: 13, marginBottom: 16 },
-  card: { backgroundColor: '#F2F6FF', borderRadius: 12, padding: 20, marginBottom: 16 },
-  cardOk: { backgroundColor: '#E9F7EF' },
-  cardFailed: { backgroundColor: '#FDECEA' },
-  cardAmount: { fontSize: 28, fontWeight: 'bold', marginBottom: 8 },
-  cardStatus: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
-  cardNote: { fontSize: 14, color: '#444', marginTop: 2 },
-  primary: { backgroundColor: '#007AFF', borderRadius: 8, padding: 14, alignItems: 'center' },
-  primaryText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  spinner: { marginTop: 12 },
-  link: { marginTop: 20, alignItems: 'center' },
-  linkText: { color: '#007AFF', fontSize: 14 },
+  entry: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  availLabel: { ...type.caption, color: colors.textMuted, marginBottom: spacing.sm },
+  amount: { ...type.hero, fontSize: 72, color: colors.text, paddingHorizontal: spacing.xl },
+  all: { ...type.bodyStrong, color: colors.accentDark, marginTop: spacing.md },
+  confirmTop: { alignItems: 'center', marginVertical: spacing.xxl },
+  hint: { ...type.caption, color: colors.textMuted, textAlign: 'center', marginVertical: spacing.lg },
+  done: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
+  doneTitle: { ...type.heading, color: colors.black, marginBottom: spacing.md },
+  reason: { ...type.body, color: colors.danger, marginTop: spacing.md, textAlign: 'center' },
 });

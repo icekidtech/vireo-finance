@@ -1,15 +1,16 @@
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { api } from '../api';
+import type { PublicUser } from '../types';
 
 const TOKEN_KEY = 'vireo.accessToken';
 const USER_KEY = 'vireo.user';
 
 interface AuthContextType {
   token: string | null;
-  user: any | null;
+  user: PublicUser | null;
   isLoading: boolean;
-  login: (token: string, user: any) => void;
+  login: (token: string, user: PublicUser) => void;
   logout: () => void;
 }
 
@@ -17,7 +18,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(null);
-  const [user, setUser] = useState<any | null>(null);
+  const [user, setUser] = useState<PublicUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -47,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = useCallback((nextToken: string, nextUser: any) => {
+  const login = useCallback((nextToken: string, nextUser: PublicUser) => {
     setTokenState(nextToken);
     setUser(nextUser);
     api.setToken(nextToken);
@@ -62,6 +63,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void SecureStore.deleteItemAsync(TOKEN_KEY);
     void SecureStore.deleteItemAsync(USER_KEY);
   }, []);
+
+  // A 401 from any call (expired/revoked token) signs the user out.
+  useEffect(() => {
+    api.setUnauthorizedHandler(logout);
+    return () => api.setUnauthorizedHandler(null);
+  }, [logout]);
 
   return (
     <AuthContext.Provider value={{ token, user, isLoading, login, logout }}>

@@ -9,6 +9,7 @@ import { AgentController } from './agent.controller';
 import { AgentService } from './agent.service';
 import { AgentSession } from './agent-session.entity';
 import { AgentToolCall } from './agent-tool-call.entity';
+import { LlmService } from './llm/llm.service';
 
 @Module({
   imports: [
@@ -19,7 +20,7 @@ import { AgentToolCall } from './agent-tool-call.entity';
     PagaModule,
   ],
   controllers: [AgentController],
-  providers: [AgentService],
+  providers: [AgentService, LlmService],
   exports: [AgentService],
 })
 export class AgentModule {}

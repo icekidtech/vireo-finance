@@ -1,70 +1,64 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Button, ActivityIndicator, TouchableOpacity, StyleSheet } from 'react-native';
-import { useAuth } from '../contexts/AuthContext';
-import { api } from '../api';
+import { Text, StyleSheet, View } from 'react-native';
 import type { StackScreenProps } from '@react-navigation/stack';
+import { api } from '../api';
+import { errorMessage } from '../lib/format';
+import { useLoad } from '../lib/useLoad';
 import type { RootStackParamList } from '../navigation';
+import { Button, Card, ErrorBanner, Field, Header, ListRow, Loading, NoticeBanner, Screen, StatusPill } from '../components/ui';
+import { colors, spacing, type } from '../theme';
 
-type KycScreenProps = StackScreenProps<RootStackParamList, 'Kyc'>;
+type Props = StackScreenProps<RootStackParamList, 'Kyc'>;
 
-export default function KycScreen({ navigation }: KycScreenProps) {
+export default function KycScreen({ navigation }: Props) {
+  const { data, loading, error, refreshing, refresh } = useLoad(() => api.getKycStatus(), 'Could not load verification status');
   const [provider, setProvider] = useState('');
   const [payload, setPayload] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
-  const submitKyc = async () => {
-    setLoading(true);
-    setError(null);
+  const submit = async () => {
+    setSubmitting(true);
+    setSubmitError(null);
     try {
-      await api.submitKyc(provider, payload || undefined);
-      setStatus('pending');
-    } catch (e: any) {
-      setError(e.response?.data?.message || 'KYC submission failed');
+      await api.submitKyc(provider.trim(), payload.trim() || undefined);
+      setSubmitted(true);
+      refresh();
+    } catch (e) {
+      setSubmitError(errorMessage(e, 'Could not submit your details'));
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  const checkStatus = async () => {
-    setLoading(true);
-    try {
-      const data = await api.getKycStatus();
-      setStatus(data.status);
-    } catch (e: any) {
-      setError(e.response?.data?.message || 'Failed to fetch KYC status');
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (loading && !data) return <Loading />;
+
+  const verified = data?.status === 'verified';
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>KYC Verification</Text>
-      {error && <Text style={styles.error}>{error}</Text>}
-      {status && <Text style={styles.status}>Status: {status}</Text>}
-      <Text style={styles.label}>Provider</Text>
-      <TextInput style={styles.input} placeholder="e.g. smileid" value={provider} onChangeText={setProvider} />
-      <Text style={styles.label}>Payload (optional)</Text>
-      <TextInput style={styles.input} placeholder="KYC provider payload" value={payload} onChangeText={setPayload} />
-      <Button title="Submit KYC" onPress={submitKyc} disabled={loading} />
-      <Button title="Check Status" onPress={checkStatus} />
-      {loading && <ActivityIndicator size="small" />}
-      <TouchableOpacity style={styles.link} onPress={() => navigation.goBack()}>
-        <Text style={styles.linkText}>Back to Wallet</Text>
-      </TouchableOpacity>
-    </View>
+    <Screen refreshing={refreshing} onRefresh={refresh}>
+      <Header title="Verify identity" onBack={() => navigation.goBack()} />
+      <ErrorBanner message={error ?? submitError} />
+      {data && (
+        <Card>
+          <ListRow title="Status" trailing={<StatusPill status={data.status} />} />
+          <ListRow title="Tier" trailing={String(data.kycTier)} />
+        </Card>
+      )}
+      {submitted && <NoticeBanner tone="success" message="Submitted. We'll review it and update your status." />}
+      {!verified && (
+        <View style={{ marginTop: spacing.lg }}>
+          <Text style={styles.lead}>Verify who you are to raise your daily limits.</Text>
+          <Field label="PROVIDER" placeholder="e.g. bvn, nin" value={provider} onChangeText={setProvider} autoCapitalize="none" hint="2–40 letters, numbers, underscores or hyphens." />
+          <Field label="ID NUMBER / DETAILS" value={payload} onChangeText={setPayload} multiline maxLength={5000} />
+          <Button title="Submit for review" loading={submitting} disabled={provider.trim().length < 2} onPress={submit} />
+        </View>
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 16 },
-  error: { color: 'red', marginBottom: 12 },
-  status: { fontSize: 14, color: '#666', marginBottom: 16 },
-  label: { fontSize: 14, color: '#666', marginTop: 12, marginBottom: 4 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 8 },
-  link: { marginTop: 20, alignItems: 'center' },
-  linkText: { color: '#007AFF', fontSize: 14 },
+  lead: { ...type.body, color: colors.textMuted, marginBottom: spacing.xl },
 });

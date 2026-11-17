@@ -1,91 +1,150 @@
-import { useCallback, useState } from 'react';
-import { View, Text, Button, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { useAuth } from '../contexts/AuthContext';
-import { api } from '../api';
+import { View, Text, StyleSheet } from 'react-native';
+import type { CompositeScreenProps } from '@react-navigation/native';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { StackScreenProps } from '@react-navigation/stack';
-import type { RootStackParamList } from '../navigation';
+import { api } from '../api';
+import { useAuth } from '../contexts/AuthContext';
+import { useLoad } from '../lib/useLoad';
+import { formatMoney, formatRelative } from '../lib/format';
+import type { RootStackParamList, TabParamList } from '../navigation';
+import {
+  Avatar,
+  BigMoney,
+  Button,
+  Card,
+  ErrorBanner,
+  ListRow,
+  Loading,
+  NoticeBanner,
+  Screen,
+  SectionTitle,
+  StatusPill,
+  Empty,
+} from '../components/ui';
+import { colors, spacing, type } from '../theme';
 
-type DashboardScreenProps = StackScreenProps<RootStackParamList, 'Dashboard'>;
+type Props = CompositeScreenProps<
+  BottomTabScreenProps<TabParamList, 'Home'>,
+  StackScreenProps<RootStackParamList>
+>;
 
-export default function DashboardScreen({ navigation }: DashboardScreenProps) {
-  const { logout } = useAuth();
-  const [balance, setBalance] = useState<{ available: string; held: string; currency: string } | null>(null);
-  const [salesToday, setSalesToday] = useState<{ amount: string; count: number } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Refresh on focus so a payment committed on the customer's phone shows up
-  // here without restarting the app.
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      setLoading(true);
-      api
-        .getDashboard()
-        .then((data: any) => {
-          if (!cancelled) {
-            setBalance(data.balance);
-            setSalesToday(data.salesToday);
-            setError(null);
-          }
-        })
-        .catch((e: any) => {
-          if (!cancelled) setError(e.response?.data?.message || 'Could not load your dashboard');
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }, []),
+export default function DashboardScreen({ navigation }: Props) {
+  const { user } = useAuth();
+  const { data, loading, refreshing, error, refresh } = useLoad(
+    () => api.getDashboard(),
+    'Could not load your dashboard',
   );
 
+  if (loading && !data) return <Loading />;
+
+  const merchant = data?.merchant;
+  const kybPending = merchant && merchant.kybStatus !== 'verified';
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Merchant Dashboard</Text>
-      {loading ? (
-        <ActivityIndicator size="large" />
-      ) : error ? (
-        <View style={styles.card}>
-          <Text style={styles.error}>{error}</Text>
+    <Screen refreshing={refreshing} onRefresh={refresh}>
+      <View style={styles.top}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.greeting}>{merchant ? merchant.businessName : 'Dashboard'}</Text>
+          <Text style={styles.handle}>
+            {merchant ? `$${merchant.handle}` : ''}
+            {user?.name ? `  ·  ${user.name}` : ''}
+          </Text>
         </View>
-      ) : (
+        <Avatar label={merchant?.businessName ?? user?.name ?? '?'} tone="black" />
+      </View>
+
+      <ErrorBanner message={error} />
+      {kybPending && (
+        <NoticeBanner
+          message={
+            merchant!.kybStatus === 'rejected'
+              ? 'Your business verification was rejected. Contact support to cash out.'
+              : 'Business verification is pending. You can take payments now; cash out unlocks once verified.'
+          }
+        />
+      )}
+
+      {data && (
         <>
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>Available Balance</Text>
-            <Text style={styles.cardAmount}>{balance?.currency} {balance?.available}</Text>
-            <Text style={styles.cardHeld}>Held: {balance?.currency} {balance?.held}</Text>
-          </View>
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>Sales Today</Text>
-            <Text style={styles.cardAmount}>{salesToday?.amount}</Text>
-            <Text style={styles.cardHeld}>{salesToday?.count} orders</Text>
-          </View>
+          <Card tone="black" style={styles.balanceCard}>
+            <Text style={styles.balanceLabel}>Balance</Text>
+            <BigMoney amount={data.balance.available} color={colors.white} />
+            {data.balance.held !== '0.00' && (
+              <Text style={styles.held}>
+                {formatMoney(data.balance.held)} on hold for payouts
+              </Text>
+            )}
+          </Card>
+
           <View style={styles.actions}>
-            <Button title="Create Order (QR)" onPress={() => navigation.navigate('CreateOrder')} />
-            <Button title="View Orders" onPress={() => navigation.navigate('Orders')} />
-            <Button title="Settle to Bank" onPress={() => navigation.navigate('Settle')} />
+            <Button
+              title="Charge"
+              variant="accent"
+              style={{ flex: 1 }}
+              onPress={() => navigation.navigate('Charge')}
+            />
+            <Button
+              title="Cash out"
+              variant="secondary"
+              style={{ flex: 1 }}
+              onPress={() => navigation.navigate('Settle')}
+            />
           </View>
+
+          <View style={styles.stats}>
+            <Card style={styles.stat}>
+              <Text style={styles.statLabel}>Sales today</Text>
+              <Text style={styles.statValue}>{formatMoney(data.salesToday.amount)}</Text>
+            </Card>
+            <Card style={styles.stat}>
+              <Text style={styles.statLabel}>Orders paid</Text>
+              <Text style={styles.statValue}>{data.salesToday.count}</Text>
+            </Card>
+          </View>
+
+          <SectionTitle
+            action={
+              <Button
+                title="See all"
+                variant="ghost"
+                small
+                onPress={() => navigation.navigate('Activity')}
+              />
+            }
+          >
+            Recent activity
+          </SectionTitle>
+          {data.recentOrders.length === 0 ? (
+            <Empty title="No sales yet" body="Tap Charge to create your first payment request." />
+          ) : (
+            data.recentOrders.map((order) => (
+              <ListRow
+                key={order.id}
+                leading={<Avatar label={order.note || order.reference} tone={order.status === 'paid' ? 'accent' : 'surface'} />}
+                title={order.note || 'Payment request'}
+                subtitle={`${formatRelative(order.createdAt)} · ${order.reference.slice(0, 12)}`}
+                trailing={formatMoney(order.amount, order.currency)}
+                trailingSub={<StatusPill status={order.status} />}
+                onPress={() => navigation.navigate('OrderDetail', { reference: order.reference })}
+              />
+            ))
+          )}
         </>
       )}
-      <TouchableOpacity style={styles.link} onPress={logout}>
-        <Text style={styles.linkText}>Sign out</Text>
-      </TouchableOpacity>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20 },
-  card: { backgroundColor: '#f5f5f5', borderRadius: 12, padding: 16, marginBottom: 12 },
-  cardLabel: { fontSize: 14, color: '#666', marginBottom: 4 },
-  cardAmount: { fontSize: 22, fontWeight: 'bold' },
-  cardHeld: { fontSize: 12, color: '#888', marginTop: 4 },
-  actions: { gap: 10 },
-  error: { color: 'red', fontSize: 14 },
-  link: { marginTop: 20, alignItems: 'center' },
-  linkText: { color: '#007AFF', fontSize: 14 },
+  top: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.md, marginBottom: spacing.xl },
+  greeting: { ...type.title, color: colors.text },
+  handle: { ...type.caption, color: colors.textMuted, marginTop: 2 },
+  balanceCard: { paddingVertical: spacing.xxl },
+  balanceLabel: { ...type.label, color: colors.textFaint, marginBottom: spacing.sm },
+  held: { ...type.caption, color: colors.textFaint, marginTop: spacing.sm },
+  actions: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
+  stats: { flexDirection: 'row', gap: spacing.md },
+  stat: { flex: 1, padding: spacing.lg, marginBottom: 0 },
+  statLabel: { ...type.caption, color: colors.textMuted },
+  statValue: { ...type.heading, color: colors.text, marginTop: 4 },
 });

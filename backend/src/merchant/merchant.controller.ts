@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
@@ -7,14 +7,20 @@ import {
   CreateSettlementDraftDto,
   OnboardMerchantDto,
   SubmitSettlementDto,
+  UpdateMerchantDto,
   VerifyKybDto,
 } from './dto/merchant.dto';
+import { CreateTerminalPaymentDto } from './dto/terminal-payment.dto';
+import { TerminalPaymentService } from './terminal-payment.service';
 import { MerchantService } from './merchant.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller('merchants')
 export class MerchantController {
-  constructor(private readonly merchants: MerchantService) {}
+  constructor(
+    private readonly merchants: MerchantService,
+    private readonly terminal: TerminalPaymentService,
+  ) {}
 
   @UseGuards(JwtAuthGuard, AdminGuard)
   @Get()
@@ -36,6 +42,18 @@ export class MerchantController {
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.merchants.getProfile(user.userId);
+  }
+
+  @Patch('me')
+  updateMe(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateMerchantDto) {
+    return this.merchants.updateProfile(user.userId, dto);
+  }
+
+  /** Face/voice payment at the till. Always 200; the body's `status` is the outcome. */
+  @Post('terminal-payment')
+  @HttpCode(200)
+  terminalPayment(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateTerminalPaymentDto) {
+    return this.terminal.pay(user.userId, dto);
   }
 
   @Get('dashboard')

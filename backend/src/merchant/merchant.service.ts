@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { DataSource, EntityManager, LessThan, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, LessThan, Repository } from 'typeorm';
 import { AccountsService } from '../accounts/accounts.service';
 import { Challenge } from '../challenges/challenge.entity';
 import { ChallengesService } from '../challenges/challenges.service';
@@ -25,7 +25,12 @@ import { formatMinor, parseAmountToMinor, assertPositive } from '../database/mon
 import { Hold } from '../ledger/hold.entity';
 import { LedgerService } from '../ledger/ledger.service';
 import { PagaService } from '../paga/paga.service';
-import { CreateOrderDto, CreateSettlementDraftDto, OnboardMerchantDto } from './dto/merchant.dto';
+import {
+  CreateOrderDto,
+  CreateSettlementDraftDto,
+  OnboardMerchantDto,
+  UpdateMerchantDto,
+} from './dto/merchant.dto';
 import { Merchant } from './merchant.entity';
 import { MerchantOrder } from './merchant-order.entity';
 import { Settlement } from './settlement.entity';
@@ -89,6 +94,55 @@ export class MerchantService {
 
   async getProfile(userId: string) {
     return presentMerchant(await this.getByOwner(userId));
+  }
+
+  /**
+   * Updates the business name and/or payout bank account. Bank details are a
+   * fraud target (redirecting settlements), so they must be supplied as a
+   * complete set and cannot change while a payout is in flight. Each payout is
+   * still signed on the owner's device with the destination shown for approval.
+   */
+  async updateProfile(userId: string, dto: UpdateMerchantDto) {
+    const merchant = await this.getByOwner(userId);
+    const bankFields = [
+      dto.settlementBankCode,
+      dto.settlementAccountNumber,
+      dto.settlementAccountName,
+    ];
+    const bankProvided = bankFields.filter((v) => v !== undefined).length;
+
+    if (bankProvided > 0 && bankProvided < bankFields.length) {
+      throw new BadRequestException(
+        'settlementBankCode, settlementAccountNumber and settlementAccountName must be provided together',
+      );
+    }
+    if (dto.businessName === undefined && bankProvided === 0) {
+      throw new BadRequestException('Nothing to update');
+    }
+
+    if (bankProvided > 0) {
+      const inFlight = await this.settlements.count({
+        where: {
+          merchantId: merchant.id,
+          status: In([
+            SettlementStatus.DRAFT,
+            SettlementStatus.PENDING,
+            SettlementStatus.PROCESSING,
+          ]),
+        },
+      });
+      if (inFlight > 0) {
+        throw new ConflictException('Bank details cannot change while a settlement is in progress');
+      }
+      merchant.settlementBankCode = dto.settlementBankCode!.trim();
+      merchant.settlementAccountNumber = dto.settlementAccountNumber!.trim();
+      merchant.settlementAccountName = dto.settlementAccountName!.trim();
+    }
+    if (dto.businessName !== undefined) {
+      merchant.businessName = dto.businessName.trim();
+    }
+
+    return presentMerchant(await this.merchants.save(merchant));
   }
 
   async createOrder(userId: string, dto: CreateOrderDto) {

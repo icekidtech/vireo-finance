@@ -332,6 +332,100 @@ export class TransfersService {
     return { transfer: presentTransfer(transfer) };
   }
 
+  /**
+   * Settles an open merchant order from a customer's wallet after the customer
+   * was verified biometrically at the till. There is no device signature on
+   * this path, so the caller (TerminalPaymentService) is the only authorization
+   * and must have verified the customer. The order is locked for the whole
+   * operation, so a QR payment and a terminal payment cannot both succeed.
+   */
+  async payOrderWithBiometric(input: {
+    customerUserId: string;
+    merchantId: string;
+    orderReference: string;
+    biometricTypes: string[];
+  }) {
+    const { customerUserId, merchantId, orderReference } = input;
+    const customer = await this.getUser(customerUserId);
+    const source = await this.accounts.getWallet(customerUserId);
+    const merchantAccount = await this.accounts.getMerchantAccount(merchantId);
+    const merchant = await this.merchants.findOne({ where: { id: merchantId } });
+    if (!merchant) {
+      throw new NotFoundException('Merchant not found');
+    }
+
+    const { transfer } = await this.ledger.runInTransaction(async (manager) => {
+      const order = await manager.getRepository(MerchantOrder).findOne({
+        where: { reference: orderReference, merchantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!order) {
+        throw new NotFoundException('Merchant order not found');
+      }
+      if (order.status !== MerchantOrderStatus.OPEN) {
+        throw new BadRequestException(`Merchant order is ${order.status}`);
+      }
+      if (order.expiresAt && order.expiresAt.getTime() < Date.now()) {
+        order.status = MerchantOrderStatus.EXPIRED;
+        await manager.getRepository(MerchantOrder).save(order);
+        throw new BadRequestException('Merchant order has expired');
+      }
+
+      const amount = BigInt(order.amount);
+      const recipientKey = `merchant:${merchantId}`;
+      await this.risk.preCheck({
+        userId: customer.id,
+        kycTier: customer.kycTier,
+        amount,
+        fee: 0n,
+        recipientKey,
+        channel: 'user',
+      });
+
+      const saved = await manager.getRepository(Transfer).save(
+        manager.getRepository(Transfer).create({
+          idempotencyKey: `terminal:${order.id}`,
+          type: TransferType.MERCHANT,
+          status: TransferStatus.COMPLETED,
+          sourceAccountId: source.id,
+          destinationAccountId: merchantAccount.id,
+          initiatedByUserId: customer.id,
+          recipientName: merchant.businessName,
+          amount: order.amount,
+          fee: '0',
+          currency: DEFAULT_CURRENCY,
+          metadata: {
+            recipientKey,
+            channel: 'biometric',
+            orderReference: order.reference,
+            biometricTypes: input.biometricTypes,
+          },
+        }),
+      );
+
+      await this.ledger.post(manager, {
+        idempotencyKey: `transfer:${saved.id}`,
+        type: LedgerTransactionType.MERCHANT_PAYMENT,
+        reference: saved.id,
+        currency: saved.currency,
+        metadata: { transferId: saved.id, orderReference: order.reference, channel: 'biometric' },
+        legs: [
+          { accountId: source.id, direction: LedgerDirection.DEBIT, amount },
+          { accountId: merchantAccount.id, direction: LedgerDirection.CREDIT, amount },
+        ],
+      });
+
+      order.status = MerchantOrderStatus.PAID;
+      order.paidByUserId = customer.id;
+      order.transferId = saved.id;
+      await manager.getRepository(MerchantOrder).save(order);
+      return { transfer: saved };
+    });
+
+    await this.notifyMerchantPaid(merchantId, transfer);
+    return { transfer: presentTransfer(transfer) };
+  }
+
   private async notifyMerchantPaid(merchantId: string, transfer: Transfer): Promise<void> {
     try {
       const merchant = await this.merchants.findOne({ where: { id: merchantId } });

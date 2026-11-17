@@ -1,12 +1,21 @@
+import type { NavigatorScreenParams } from '@react-navigation/native';
+
 /**
- * One param list for the whole app: the navigator and every screen's props are
+ * One param list for the whole app: the navigators and every screen's props are
  * typed from this, so a renamed route or a changed param fails at compile time.
  */
+export type TabParamList = {
+  Home: undefined;
+  Charge: undefined;
+  Activity: { initialTab?: 'sales' | 'payouts' } | undefined;
+  Account: undefined;
+};
+
 export type RootStackParamList = {
   Onboard: undefined;
-  Dashboard: undefined;
-  CreateOrder: undefined;
-  Orders: undefined;
+  Tabs: NavigatorScreenParams<TabParamList>;
+  OrderDetail: { reference: string };
   Settle: undefined;
+  Devices: undefined;
   BiometricPayment: { orderReference: string; amount: string };
 };

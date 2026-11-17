@@ -1,190 +1,180 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Button, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
+import { errorMessage } from '../lib/format';
+import { Button, ErrorBanner, Field, NoticeBanner, Screen } from '../components/ui';
+import { colors, spacing, type } from '../theme';
 
-type Stage = 'account' | 'otp' | 'business';
+type Stage = 'welcome' | 'account' | 'otp' | 'business';
 
 export default function OnboardScreen() {
-  const [stage, setStage] = useState<Stage>('account');
+  const { login } = useAuth();
+  const [stage, setStage] = useState<Stage>('welcome');
+  const [isSignIn, setIsSignIn] = useState(false);
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
-  const [handle, setHandle] = useState('');
   const [code, setCode] = useState('');
-  const [token, setToken] = useState('');
   const [devCode, setDevCode] = useState<string | null>(null);
+  const [token, setToken] = useState('');
   const [businessName, setBusinessName] = useState('');
+  const [handle, setHandle] = useState('');
   const [bankCode, setBankCode] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountName, setAccountName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isSignIn, setIsSignIn] = useState(false);
-  const { login } = useAuth();
 
-  const onRegister = async () => {
+  const guard = async (fn: () => Promise<void>, fallback: string) => {
     setLoading(true);
     setError(null);
     try {
-      // Registration creates the account only; the OTP proves phone ownership.
-      await api.register(phone, name, handle || undefined);
-      const otp = await api.requestOtp(phone);
-      setDevCode(otp?.devCode ?? null);
-      setStage('otp');
-    } catch (e: any) {
-      setError(e.response?.data?.message || 'Registration failed');
+      await fn();
+    } catch (e) {
+      setError(errorMessage(e, fallback));
     } finally {
       setLoading(false);
     }
   };
 
-  const onVerify = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await api.verifyOtp(phone, code);
-      if (!data.accessToken) {
-        setError('Verification failed');
-        return;
-      }
-      api.setToken(data.accessToken);
-      if (isSignIn) {
-        const profile = await api.getProfile();
-        login(data.accessToken, profile);
-        return;
-      }
-      // Hold the token locally: calling login() here would swap the navigator
-      // to the dashboard before the merchant profile exists.
-      setToken(data.accessToken);
-      setStage('business');
-    } catch (e: any) {
-      setError(e.response?.data?.message || 'Invalid OTP');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /** Returning merchants skip registration and business setup entirely. */
-  const onSignIn = async () => {
-    setIsSignIn(true);
+  const sendCode = async () => {
+    const otp = await api.requestOtp(phone.trim());
+    setDevCode(otp.devCode ?? null);
     setStage('otp');
-    setError(null);
-    if (phone) {
-      await requestCode();
-    }
   };
 
-  const requestCode = async () => {
-    if (!phone) {
-      setError('Enter your phone number first');
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const otp = await api.requestOtp(phone);
-      setDevCode(otp?.devCode ?? null);
-    } catch (e: any) {
-      setError(e.response?.data?.message || 'Failed to send OTP');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const onRegister = () =>
+    guard(async () => {
+      // Registration creates the account only; the OTP proves phone ownership.
+      await api.register(phone.trim(), name.trim());
+      await sendCode();
+    }, 'Could not create your account');
 
-  const onOnboard = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      await api.onboardMerchant(
-        businessName,
-        handle,
-        bankCode || undefined,
-        accountNumber || undefined,
-        accountName || undefined,
-      );
-      const profile = await api.getProfile();
-      login(token, profile);
-    } catch (e: any) {
-      const message = e.response?.data?.message || 'Merchant onboarding failed';
-      // A merchant profile already exists for this account: nothing left to do.
-      if (e.response?.status === 409 && /already has a merchant profile/i.test(message)) {
-        const profile = await api.getProfile();
-        login(token, profile);
-        return;
+  const onSignIn = () => guard(sendCode, 'Could not send a code');
+
+  const onVerify = () =>
+    guard(async () => {
+      const data = await api.verifyOtp(phone.trim(), code.trim());
+      api.setToken(data.accessToken);
+      // Returning merchants go straight in. A user with no merchant profile
+      // (new, or registered but never finished setup) continues to business setup.
+      try {
+        await api.getMerchantProfile();
+        login(data.accessToken, data.user);
+      } catch (e) {
+        if ((e as { response?: { status?: number } }).response?.status === 404) {
+          // Hold the token locally: login() would swap to the dashboard
+          // before the merchant profile exists.
+          setToken(data.accessToken);
+          setBusinessName((b) => b || '');
+          setStage('business');
+        } else {
+          api.clearToken();
+          throw e;
+        }
       }
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
+    }, 'Invalid or expired code');
+
+  const onOnboard = () =>
+    guard(async () => {
+      await api.onboardMerchant({
+        businessName: businessName.trim(),
+        handle: handle.trim(),
+        settlementBankCode: bankCode.trim() || undefined,
+        settlementAccountNumber: accountNumber.trim() || undefined,
+        settlementAccountName: accountName.trim() || undefined,
+      });
+      login(token, await api.getProfile());
+    }, 'Could not set up your business');
+
+  const back = () => {
+    setError(null);
+    setStage(stage === 'otp' ? 'account' : 'welcome');
+    if (stage === 'otp' && isSignIn) setStage('account');
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Merchant Onboarding</Text>
-      {error && <Text style={styles.error}>{error}</Text>}
+    <Screen>
+      {stage === 'welcome' ? (
+        <View style={styles.welcome}>
+          <Text style={styles.logo}>vireo</Text>
+          <Text style={styles.tag}>Get paid the way{'\n'}your customers pay.</Text>
+          <View style={{ flex: 1 }} />
+          <Button
+            title="Create business account"
+            variant="accent"
+            onPress={() => {
+              setIsSignIn(false);
+              setStage('account');
+            }}
+          />
+          <Button
+            title="Sign in"
+            variant="ghost"
+            onPress={() => {
+              setIsSignIn(true);
+              setStage('account');
+            }}
+          />
+        </View>
+      ) : (
+        <View style={{ paddingTop: spacing.xl }}>
+          {stage !== 'business' && (
+            <TouchableOpacity onPress={back} hitSlop={12}>
+              <Text style={styles.back}>‹</Text>
+            </TouchableOpacity>
+          )}
+          <ErrorBanner message={error} />
 
-      {stage === 'account' && (
-        <>
-          <TextInput style={styles.input} placeholder="Phone (+234...)" value={phone} onChangeText={setPhone} autoCapitalize="none" />
-          <TextInput style={styles.input} placeholder="Full name" value={name} onChangeText={setName} />
-          <TextInput style={styles.input} placeholder="Merchant handle" value={handle} onChangeText={setHandle} autoCapitalize="none" />
-          <Button title="Create Account" onPress={onRegister} disabled={loading} />
-          <TouchableOpacity style={styles.link} onPress={onSignIn}>
-            <Text style={styles.linkText}>Already registered? Sign in</Text>
-          </TouchableOpacity>
-        </>
-      )}
-
-      {stage === 'otp' && (
-        <>
-          <Text style={styles.sectionTitle}>{isSignIn ? 'Sign in' : `Verify ${phone}`}</Text>
-          {isSignIn && (
+          {stage === 'account' && (
             <>
-              <TextInput style={styles.input} placeholder="Phone (+234...)" value={phone} onChangeText={setPhone} autoCapitalize="none" />
-              <Button title="Send OTP" onPress={requestCode} disabled={loading} />
+              <Text style={styles.title}>{isSignIn ? 'Welcome back' : 'Your details'}</Text>
+              <Field label="PHONE" placeholder="+2348012345678" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoCapitalize="none" />
+              {!isSignIn && <Field label="FULL NAME" placeholder="Ada Okafor" value={name} onChangeText={setName} />}
+              <Button
+                title={isSignIn ? 'Send code' : 'Continue'}
+                loading={loading}
+                disabled={!phone.trim() || (!isSignIn && !name.trim())}
+                onPress={isSignIn ? onSignIn : onRegister}
+              />
             </>
           )}
-          {devCode && <Text style={styles.hint}>Dev code: {devCode}</Text>}
-          <TextInput style={styles.input} placeholder="6-digit code" value={code} onChangeText={setCode} keyboardType="numeric" maxLength={6} />
-          <Button title="Verify" onPress={onVerify} disabled={loading} />
-        </>
-      )}
 
-      {stage === 'business' && (
-        <>
-          <Text style={styles.sectionTitle}>Business Details</Text>
-          <TextInput style={styles.input} placeholder="Business name" value={businessName} onChangeText={setBusinessName} />
-          <TextInput style={styles.input} placeholder="Settlement bank code" value={bankCode} onChangeText={setBankCode} autoCapitalize="none" />
-          <TextInput style={styles.input} placeholder="Settlement account number" value={accountNumber} onChangeText={setAccountNumber} keyboardType="numeric" />
-          <TextInput style={styles.input} placeholder="Account name" value={accountName} onChangeText={setAccountName} />
-          <Button title="Onboard Merchant" onPress={onOnboard} disabled={loading} />
-        </>
-      )}
+          {stage === 'otp' && (
+            <>
+              <Text style={styles.title}>Enter the code</Text>
+              <Text style={styles.sub}>Sent to {phone}</Text>
+              {devCode && <NoticeBanner tone="success" message={`Dev code: ${devCode}`} />}
+              <Field label="6-DIGIT CODE" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} />
+              <Button title="Verify" loading={loading} disabled={code.length !== 6} onPress={onVerify} />
+              <Button title="Resend code" variant="ghost" onPress={() => guard(sendCode, 'Could not resend')} />
+            </>
+          )}
 
-      {loading && <ActivityIndicator size="small" />}
-      {stage !== 'account' && (
-        <TouchableOpacity
-          style={styles.link}
-          onPress={() => {
-            setStage('account');
-            setIsSignIn(false);
-            setError(null);
-          }}
-        >
-          <Text style={styles.linkText}>Start over</Text>
-        </TouchableOpacity>
+          {stage === 'business' && (
+            <>
+              <Text style={styles.title}>Set up your business</Text>
+              <Field label="BUSINESS NAME" value={businessName} onChangeText={setBusinessName} placeholder="Ada's Kitchen" />
+              <Field label="HANDLE" value={handle} onChangeText={setHandle} autoCapitalize="none" placeholder="adas_kitchen" hint="3–60 letters, numbers or underscores. Customers can find you by this." />
+              <Text style={styles.section}>Where should we send your money?</Text>
+              <Field label="BANK CODE" value={bankCode} onChangeText={setBankCode} autoCapitalize="none" placeholder="058" />
+              <Field label="ACCOUNT NUMBER" value={accountNumber} onChangeText={setAccountNumber} keyboardType="number-pad" placeholder="0123456789" />
+              <Field label="ACCOUNT NAME" value={accountName} onChangeText={setAccountName} />
+              <Button title="Finish" variant="accent" loading={loading} disabled={!businessName.trim() || !handle.trim()} onPress={onOnboard} />
+            </>
+          )}
+        </View>
       )}
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, justifyContent: 'center' },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  error: { color: 'red', marginBottom: 12, textAlign: 'center' },
-  hint: { color: '#888', marginBottom: 12, textAlign: 'center', fontSize: 13 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 16 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#333', marginTop: 8, marginBottom: 8 },
-  link: { marginTop: 16, alignItems: 'center' },
-  linkText: { color: '#007AFF', fontSize: 14 },
+  welcome: { minHeight: 620, paddingTop: 80, paddingBottom: spacing.xl },
+  logo: { fontSize: 48, fontWeight: '900', letterSpacing: -2, color: colors.text },
+  tag: { ...type.display, fontSize: 36, marginTop: spacing.xl, color: colors.text },
+  back: { fontSize: 38, lineHeight: 40, color: colors.text, marginBottom: spacing.lg },
+  title: { ...type.title, marginBottom: spacing.xl, color: colors.text },
+  sub: { ...type.body, color: colors.textMuted, marginTop: -spacing.lg, marginBottom: spacing.xl },
+  section: { ...type.heading, marginTop: spacing.md, marginBottom: spacing.lg, color: colors.text },
 });

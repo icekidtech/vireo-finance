@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsEnum, IsOptional, IsNumber, Min } from 'class-validator';
+import { IsNotEmpty, IsString, IsEnum, IsOptional, IsObject, MaxLength } from 'class-validator';
 import { BiometricType } from '../../biometrics/biometric-enrollment.entity';
 
 export class CreateTerminalPaymentDto {
@@ -27,6 +27,7 @@ export class CreateTerminalPaymentDto {
    */
   @IsString()
   @IsNotEmpty()
+  @MaxLength(7_000_000)
   biometricSample: string;
 
   /**
@@ -34,6 +35,7 @@ export class CreateTerminalPaymentDto {
    */
   @IsOptional()
   @IsString()
+  @MaxLength(7_000_000)
   secondBiometricSample?: string;
 
   /**
@@ -44,15 +46,9 @@ export class CreateTerminalPaymentDto {
   secondBiometricType?: BiometricType;
 
   /**
-   * Optional: step-up challenge response (PIN or phrase) if required.
-   */
-  @IsOptional()
-  @IsString()
-  stepUpResponse?: string;
-
-  /**
    * Merchant metadata: terminal ID, location, etc.
    */
   @IsOptional()
+  @IsObject()
   metadata?: Record<string, unknown>;
 }
