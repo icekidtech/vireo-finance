@@ -24,11 +24,16 @@
       },
       "package": "com.vireo.personal"
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
     "plugins": [
       "expo-camera"
-    ]
+    ],
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "web": {
+      "bundler": "metro"
+    }
   }
 }

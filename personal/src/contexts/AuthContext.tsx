@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
-import * as SecureStore from 'expo-secure-store';
+import * as storage from '../lib/storage';
 import { api } from '../api';
 import type { PublicUser } from '../types';
 
@@ -26,8 +26,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const [storedToken, storedUser] = await Promise.all([
-          SecureStore.getItemAsync(TOKEN_KEY),
-          SecureStore.getItemAsync(USER_KEY),
+          storage.getItem(TOKEN_KEY),
+          storage.getItem(USER_KEY),
         ]);
         if (cancelled) return;
         if (storedToken) {
@@ -52,16 +52,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTokenState(nextToken);
     setUser(nextUser);
     api.setToken(nextToken);
-    void SecureStore.setItemAsync(TOKEN_KEY, nextToken);
-    void SecureStore.setItemAsync(USER_KEY, JSON.stringify(nextUser ?? null));
+    void storage.setItem(TOKEN_KEY, nextToken);
+    void storage.setItem(USER_KEY, JSON.stringify(nextUser ?? null));
   }, []);
 
   const logout = useCallback(() => {
     setTokenState(null);
     setUser(null);
     api.clearToken();
-    void SecureStore.deleteItemAsync(TOKEN_KEY);
-    void SecureStore.deleteItemAsync(USER_KEY);
+    void storage.deleteItem(TOKEN_KEY);
+    void storage.deleteItem(USER_KEY);
   }, []);
 
   // A 401 from any call (expired/revoked token) signs the user out.

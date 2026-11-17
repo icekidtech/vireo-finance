@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import type { StackScreenProps } from '@react-navigation/stack';
 import QRCode from 'react-native-qrcode-svg';
 import { api } from '../api';
@@ -18,6 +18,7 @@ import {
   StatusPill,
 } from '../components/ui';
 import { colors, spacing, type } from '../theme';
+import { showAlert } from '../lib/dialog';
 
 type Props = StackScreenProps<RootStackParamList, 'OrderDetail'>;
 
@@ -62,7 +63,7 @@ export default function OrderDetailScreen({ navigation, route }: Props) {
   }, [waiting, reference]);
 
   const cancel = () => {
-    Alert.alert('Cancel this request?', 'The customer will no longer be able to pay it.', [
+    showAlert('Cancel this request?', 'The customer will no longer be able to pay it.', [
       { text: 'Keep', style: 'cancel' },
       {
         text: 'Cancel request',

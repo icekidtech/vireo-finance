@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Text, StyleSheet } from 'react-native';
+import { Text, StyleSheet } from 'react-native';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
 import { errorMessage, formatDateTime } from '../lib/format';
@@ -7,6 +7,7 @@ import { useLoad } from '../lib/useLoad';
 import type { RootStackParamList } from '../navigation';
 import { Avatar, Button, Card, Empty, ErrorBanner, Header, ListRow, Loading, Screen, SectionTitle, StatusPill } from '../components/ui';
 import { colors, spacing, type } from '../theme';
+import { showAlert } from '../lib/dialog';
 
 type Props = StackScreenProps<RootStackParamList, 'Biometrics'>;
 
@@ -22,7 +23,7 @@ export default function BiometricsScreen({ navigation }: Props) {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const revoke = (kind: 'face' | 'voice') =>
-    Alert.alert(`Remove ${kind} enrollment?`, 'You will no longer be able to pay with it.', [
+    showAlert(`Remove ${kind} enrollment?`, 'You will no longer be able to pay with it.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
@@ -39,7 +40,7 @@ export default function BiometricsScreen({ navigation }: Props) {
     ]);
 
   const deleteAll = () =>
-    Alert.alert('Delete all biometric data?', 'This revokes your consent and deletes every enrollment.', [
+    showAlert('Delete all biometric data?', 'This revokes your consent and deletes every enrollment.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',

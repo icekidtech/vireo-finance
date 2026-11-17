@@ -1,6 +1,6 @@
 import * as Crypto from 'expo-crypto';
 import * as LocalAuthentication from 'expo-local-authentication';
-import * as SecureStore from 'expo-secure-store';
+import * as storage from './storage';
 import { ed25519 } from '@noble/curves/ed25519';
 import { Platform } from 'react-native';
 import { api } from '../api';
@@ -28,8 +28,8 @@ export interface SignedApproval {
  * public key that no longer matches the private key on this phone.
  */
 export async function ensureDeviceRegistered(): Promise<string> {
-  const privateKeyHex = (await SecureStore.getItemAsync(PRIVATE_KEY_STORE)) ?? (await createAndStoreKey());
-  const storedDeviceId = await SecureStore.getItemAsync(DEVICE_ID_STORE);
+  const privateKeyHex = (await storage.getItem(PRIVATE_KEY_STORE)) ?? (await createAndStoreKey());
+  const storedDeviceId = await storage.getItem(DEVICE_ID_STORE);
 
   if (storedDeviceId) {
     return storedDeviceId;
@@ -43,29 +43,27 @@ export async function ensureDeviceRegistered(): Promise<string> {
     'ed25519',
   );
   const deviceId: string = device.id;
-  await SecureStore.setItemAsync(DEVICE_ID_STORE, deviceId);
+  await storage.setItem(DEVICE_ID_STORE, deviceId);
   return deviceId;
 }
 
 /** An Ed25519 private key is 32 random bytes, taken from the platform CSPRNG. */
 async function createAndStoreKey(): Promise<string> {
   const privateKeyHex = bytesToHex(Crypto.getRandomValues(new Uint8Array(32)));
-  await SecureStore.setItemAsync(PRIVATE_KEY_STORE, privateKeyHex, {
-    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-  });
+  await storage.setItem(PRIVATE_KEY_STORE, privateKeyHex, { deviceOnly: true });
   // Drop any registration belonging to a key this phone no longer holds.
-  await SecureStore.deleteItemAsync(DEVICE_ID_STORE);
+  await storage.deleteItem(DEVICE_ID_STORE);
   return privateKeyHex;
 }
 
 /** Forgets this phone's key + registration (used after the device is revoked). */
 export async function clearDeviceRegistration(): Promise<void> {
-  await SecureStore.deleteItemAsync(PRIVATE_KEY_STORE);
-  await SecureStore.deleteItemAsync(DEVICE_ID_STORE);
+  await storage.deleteItem(PRIVATE_KEY_STORE);
+  await storage.deleteItem(DEVICE_ID_STORE);
 }
 
 export async function getDeviceId(): Promise<string | null> {
-  return SecureStore.getItemAsync(DEVICE_ID_STORE);
+  return storage.getItem(DEVICE_ID_STORE);
 }
 
 /**
@@ -75,7 +73,7 @@ export async function getDeviceId(): Promise<string | null> {
  */
 export async function approveAndSign(payloadHash: string): Promise<SignedApproval> {
   const biometric = await requestBiometricApproval();
-  const privateKeyHex = await SecureStore.getItemAsync(PRIVATE_KEY_STORE);
+  const privateKeyHex = await storage.getItem(PRIVATE_KEY_STORE);
   if (!privateKeyHex) {
     throw new Error('No device key on this phone. Register this device first.');
   }

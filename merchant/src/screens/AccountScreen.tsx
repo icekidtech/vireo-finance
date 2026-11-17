@@ -1,4 +1,4 @@
-import { Text, StyleSheet, View, Alert } from 'react-native';
+import { Text, StyleSheet, View } from 'react-native';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { StackScreenProps } from '@react-navigation/stack';
@@ -8,6 +8,7 @@ import { useLoad } from '../lib/useLoad';
 import type { RootStackParamList, TabParamList } from '../navigation';
 import { Avatar, Button, Card, ErrorBanner, ListRow, Loading, Screen, SectionTitle, StatusPill } from '../components/ui';
 import { colors, spacing, type } from '../theme';
+import { showAlert } from '../lib/dialog';
 
 type Props = CompositeScreenProps<
   BottomTabScreenProps<TabParamList, 'Account'>,
@@ -24,7 +25,7 @@ export default function AccountScreen({ navigation }: Props) {
   if (loading && !merchant) return <Loading />;
 
   const confirmSignOut = () =>
-    Alert.alert('Sign out?', undefined, [
+    showAlert('Sign out?', undefined, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign out', style: 'destructive', onPress: logout },
     ]);

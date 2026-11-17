@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Alert } from 'react-native';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
 import { clearDeviceRegistration, getDeviceId } from '../lib/deviceKey';
@@ -7,6 +6,7 @@ import { errorMessage, formatDateTime } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
 import type { RootStackParamList } from '../navigation';
 import { Avatar, Button, Empty, ErrorBanner, Header, ListRow, Loading, Screen, StatusPill } from '../components/ui';
+import { showAlert } from '../lib/dialog';
 
 type Props = StackScreenProps<RootStackParamList, 'Devices'>;
 
@@ -20,7 +20,7 @@ export default function DevicesScreen({ navigation }: Props) {
   }, []);
 
   const revoke = (id: string) =>
-    Alert.alert('Revoke this device?', 'It will no longer be able to approve payouts.', [
+    showAlert('Revoke this device?', 'It will no longer be able to approve payouts.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Revoke',

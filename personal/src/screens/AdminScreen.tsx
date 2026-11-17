@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Alert } from 'react-native';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
 import { errorMessage, formatRelative } from '../lib/format';
@@ -8,6 +7,7 @@ import type { RootStackParamList } from '../navigation';
 import { Avatar, Button, Empty, ErrorBanner, Header, ListRow, Loading, Screen, SegmentedControl, StatusPill } from '../components/ui';
 import { View } from 'react-native';
 import { spacing } from '../theme';
+import { showAlert } from '../lib/dialog';
 
 type Props = StackScreenProps<RootStackParamList, 'Admin'>;
 type Tab = 'kyc' | 'kyb';
@@ -31,7 +31,7 @@ export default function AdminScreen({ navigation }: Props) {
   };
 
   const reviewKyc = (id: string, provider: string) =>
-    Alert.alert(`Review ${provider} submission`, 'Approving sets the user\'s tier. Rejecting suspends the user.', [
+    showAlert(`Review ${provider} submission`, 'Approving sets the user\'s tier. Rejecting suspends the user.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Approve tier 1', onPress: () => run(() => api.verifyKyc(id, 'verified', '1'), kyc.refresh) },
       { text: 'Approve tier 2', onPress: () => run(() => api.verifyKyc(id, 'verified', '2'), kyc.refresh) },
@@ -43,7 +43,7 @@ export default function AdminScreen({ navigation }: Props) {
     ]);
 
   const reviewKyb = (id: string, name: string) =>
-    Alert.alert(`Review ${name}`, undefined, [
+    showAlert(`Review ${name}`, undefined, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Verify', onPress: () => run(() => api.verifyKyb(id, 'verified'), merchants.refresh) },
       { text: 'Reject', style: 'destructive', onPress: () => run(() => api.verifyKyb(id, 'rejected'), merchants.refresh) },
