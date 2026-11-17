@@ -10,8 +10,10 @@ import {
   TextInput,
   TextInputProps,
   TouchableOpacity,
+  useWindowDimensions,
   View,
   ViewStyle,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radius, spacing, type } from '../theme';
@@ -40,7 +42,7 @@ export function Screen({
 }: ScreenProps) {
   const content = scroll ? (
     <ScrollView
-      contentContainerStyle={[styles.scrollContent, padded && styles.padded]}
+      contentContainerStyle={[styles.scrollContent, styles.column, padded && styles.padded]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
       refreshControl={
@@ -52,7 +54,7 @@ export function Screen({
       {children}
     </ScrollView>
   ) : (
-    <View style={[styles.fill, padded && styles.padded]}>{children}</View>
+    <View style={[styles.fill, styles.column, padded && styles.padded]}>{children}</View>
   );
   return (
     <SafeAreaView style={[styles.fill, { backgroundColor: background }]} edges={edges}>
@@ -404,8 +406,36 @@ export function Keypad({ onKey }: { onKey: (key: string) => void }) {
   );
 }
 
+/**
+ * On wide screens (web, tablets) the app is a centred phone-width column
+ * instead of stretching edge to edge.
+ */
+export function AppFrame({ children }: { children: ReactNode }) {
+  const { width } = useWindowDimensions();
+  if (Platform.OS !== 'web' || width < 700) return <>{children}</>;
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.surfaceStrong, alignItems: 'center' }}>
+      <View
+        style={{
+          flex: 1,
+          width: '100%',
+          maxWidth: 480,
+          backgroundColor: colors.bg,
+          borderLeftWidth: 1,
+          borderRightWidth: 1,
+          borderColor: colors.border,
+          overflow: 'hidden',
+        }}
+      >
+        {children}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  column: { width: '100%', maxWidth: 520, alignSelf: 'center' },
   scrollContent: { paddingBottom: spacing.xxl * 2 },
   padded: { paddingHorizontal: spacing.xl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },

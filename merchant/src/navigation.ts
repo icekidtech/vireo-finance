@@ -12,7 +12,8 @@ export type TabParamList = {
 };
 
 export type RootStackParamList = {
-  Onboard: undefined;
+  Landing: undefined;
+  Onboard: { mode?: 'signin' | 'signup' } | undefined;
   Tabs: NavigatorScreenParams<TabParamList>;
   OrderDetail: { reference: string };
   Settle: undefined;

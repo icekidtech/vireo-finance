@@ -1,4 +1,4 @@
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Text, View } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -6,6 +6,8 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import AuthScreen from './src/screens/AuthScreen';
+import LandingScreen from './src/screens/LandingScreen';
+import { AppFrame } from './src/components/ui';
 import HomeScreen from './src/screens/HomeScreen';
 import PayScreen from './src/screens/PayScreen';
 import ActivityScreen from './src/screens/ActivityScreen';
@@ -68,11 +70,15 @@ function AppNavigator() {
     );
   }
 
-  return (
+  const navigator = (
     <NavigationContainer theme={navTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!token ? (
-          <Stack.Screen name="Auth" component={AuthScreen} />
+          <>
+            {/* The marketing page is web-only; phones open straight to sign-in. */}
+            {Platform.OS === 'web' && <Stack.Screen name="Landing" component={LandingScreen} />}
+            <Stack.Screen name="Auth" component={AuthScreen} />
+          </>
         ) : (
           <>
             <Stack.Screen name="Tabs" component={Tabs} />
@@ -88,6 +94,8 @@ function AppNavigator() {
       </Stack.Navigator>
     </NavigationContainer>
   );
+
+  return token ? <AppFrame>{navigator}</AppFrame> : navigator;
 }
 
 export default function App() {

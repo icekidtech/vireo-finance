@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../navigation';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
@@ -8,10 +10,12 @@ import { colors, spacing, type } from '../theme';
 
 type Stage = 'welcome' | 'details' | 'otp';
 
-export default function AuthScreen() {
+export default function AuthScreen({ navigation, route }: StackScreenProps<RootStackParamList, 'Auth'>) {
   const { login } = useAuth();
-  const [stage, setStage] = useState<Stage>('welcome');
-  const [isSignIn, setIsSignIn] = useState(false);
+  // Arriving from the web landing page skips the welcome step.
+  const mode = route.params?.mode;
+  const [stage, setStage] = useState<Stage>(mode ? 'details' : 'welcome');
+  const [isSignIn, setIsSignIn] = useState(mode === 'signin');
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [handle, setHandle] = useState('');
@@ -57,6 +61,9 @@ export default function AuthScreen() {
         <View style={styles.welcome}>
           <Text style={styles.logo}>vireo</Text>
           <Text style={styles.tag}>Money that responds{'\n'}to you.</Text>
+          <Text style={styles.point}>• Pay people, banks and merchants</Text>
+          <Text style={styles.point}>• Ask the assistant about your money</Text>
+          <Text style={styles.point}>• Approve every payment with your fingerprint or face</Text>
           <View style={{ flex: 1 }} />
           <Button
             title="Get started"
@@ -80,7 +87,9 @@ export default function AuthScreen() {
           <TouchableOpacity
             onPress={() => {
               setError(null);
-              setStage(stage === 'otp' ? 'details' : 'welcome');
+              if (stage === 'otp') return setStage('details');
+              if (mode && navigation.canGoBack()) return navigation.goBack();
+              setStage('welcome');
             }}
             hitSlop={12}
           >
@@ -126,6 +135,7 @@ const styles = StyleSheet.create({
   welcome: { minHeight: 620, paddingTop: 80, paddingBottom: spacing.xl },
   logo: { fontSize: 48, fontWeight: '900', letterSpacing: -2, color: colors.text },
   tag: { ...type.display, fontSize: 36, marginTop: spacing.xl, color: colors.text },
+  point: { ...type.body, fontSize: 17, color: colors.textMuted, marginTop: spacing.md },
   back: { fontSize: 38, lineHeight: 40, color: colors.text, marginBottom: spacing.lg },
   title: { ...type.title, marginBottom: spacing.xl, color: colors.text },
   sub: { ...type.body, color: colors.textMuted, marginTop: -spacing.lg, marginBottom: spacing.xl },

@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../navigation';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
@@ -8,10 +10,12 @@ import { colors, spacing, type } from '../theme';
 
 type Stage = 'welcome' | 'account' | 'otp' | 'business';
 
-export default function OnboardScreen() {
+export default function OnboardScreen({ navigation, route }: StackScreenProps<RootStackParamList, 'Onboard'>) {
   const { login } = useAuth();
-  const [stage, setStage] = useState<Stage>('welcome');
-  const [isSignIn, setIsSignIn] = useState(false);
+  // Arriving from the web landing page skips the welcome step.
+  const mode = route.params?.mode;
+  const [stage, setStage] = useState<Stage>(mode ? 'account' : 'welcome');
+  const [isSignIn, setIsSignIn] = useState(mode === 'signin');
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
@@ -87,8 +91,9 @@ export default function OnboardScreen() {
 
   const back = () => {
     setError(null);
-    setStage(stage === 'otp' ? 'account' : 'welcome');
-    if (stage === 'otp' && isSignIn) setStage('account');
+    if (stage === 'otp') return setStage('account');
+    if (mode && navigation.canGoBack()) return navigation.goBack();
+    setStage('welcome');
   };
 
   return (
@@ -97,6 +102,9 @@ export default function OnboardScreen() {
         <View style={styles.welcome}>
           <Text style={styles.logo}>vireo</Text>
           <Text style={styles.tag}>Get paid the way{'\n'}your customers pay.</Text>
+          <Text style={styles.point}>• Show a QR, get paid instantly</Text>
+          <Text style={styles.point}>• Track every sale and payout</Text>
+          <Text style={styles.point}>• Cash out to your bank, approved on your phone</Text>
           <View style={{ flex: 1 }} />
           <Button
             title="Create business account"
@@ -170,6 +178,7 @@ const styles = StyleSheet.create({
   welcome: { minHeight: 620, paddingTop: 80, paddingBottom: spacing.xl },
   logo: { fontSize: 48, fontWeight: '900', letterSpacing: -2, color: colors.text },
   tag: { ...type.display, fontSize: 36, marginTop: spacing.xl, color: colors.text },
+  point: { ...type.body, fontSize: 17, color: colors.textMuted, marginTop: spacing.md },
   back: { fontSize: 38, lineHeight: 40, color: colors.text, marginBottom: spacing.lg },
   title: { ...type.title, marginBottom: spacing.xl, color: colors.text },
   sub: { ...type.body, color: colors.textMuted, marginTop: -spacing.lg, marginBottom: spacing.xl },

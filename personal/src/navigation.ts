@@ -12,7 +12,8 @@ export type TabParamList = {
 };
 
 export type RootStackParamList = {
-  Auth: undefined;
+  Landing: undefined;
+  Auth: { mode?: 'signin' | 'signup' } | undefined;
   Tabs: NavigatorScreenParams<TabParamList>;
   TransferDetail: { transferId: string };
   Kyc: undefined;

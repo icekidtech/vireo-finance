@@ -1,4 +1,4 @@
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Text, View } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -6,6 +6,8 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import OnboardScreen from './src/screens/OnboardScreen';
+import LandingScreen from './src/screens/LandingScreen';
+import { AppFrame } from './src/components/ui';
 import DashboardScreen from './src/screens/DashboardScreen';
 import CreateOrderScreen from './src/screens/CreateOrderScreen';
 import ActivityScreen from './src/screens/ActivityScreen';
@@ -66,11 +68,15 @@ function AppNavigator() {
     );
   }
 
-  return (
+  const navigator = (
     <NavigationContainer theme={navTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!token ? (
-          <Stack.Screen name="Onboard" component={OnboardScreen} />
+          <>
+            {/* The marketing page is web-only; phones open straight to sign-in. */}
+            {Platform.OS === 'web' && <Stack.Screen name="Landing" component={LandingScreen} />}
+            <Stack.Screen name="Onboard" component={OnboardScreen} />
+          </>
         ) : (
           <>
             <Stack.Screen name="Tabs" component={Tabs} />
@@ -84,6 +90,8 @@ function AppNavigator() {
       </Stack.Navigator>
     </NavigationContainer>
   );
+
+  return token ? <AppFrame>{navigator}</AppFrame> : navigator;
 }
 
 export default function App() {
