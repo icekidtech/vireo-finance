@@ -16,6 +16,26 @@ export class SubmitKycDto {
   payload?: string;
 }
 
+const NAME_PATTERN = /^[\p{L}][\p{L}'’ .-]{0,59}$/u;
+
+export class VerifyBvnDto {
+  @IsString()
+  @Matches(/^\d{11}$/, { message: 'bvn must be 11 digits' })
+  bvn: string;
+
+  @IsString()
+  @Matches(NAME_PATTERN, { message: 'firstName contains invalid characters' })
+  firstName: string;
+
+  @IsString()
+  @Matches(NAME_PATTERN, { message: 'lastName contains invalid characters' })
+  lastName: string;
+
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'dateOfBirth must be YYYY-MM-DD' })
+  dateOfBirth: string;
+}
+
 export class VerifyKycDto {
   @IsEnum(KycStatus)
   status: KycStatus;
@@ -46,4 +66,8 @@ export class UserKycResponse {
   userId: string;
   kycTier: number;
   status: KycStatus;
+  /** Whether automatic BVN verification is configured on this server. */
+  bvnAvailable: boolean;
+  /** Last four digits of the verified BVN, if any. */
+  bvnLast4: string | null;
 }

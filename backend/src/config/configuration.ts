@@ -61,6 +61,12 @@ export interface AppConfig {
     encryptionKey: string;
     didit: { apiKey: string; baseUrl: string; keyType: string; timeoutMs: number };
   };
+  kyc: {
+    /** Name of the BVN verification vendor; empty disables automatic BVN checks. */
+    provider: string;
+    /** Base64 AES-256 key that encrypts stored BVNs (also keys the BVN uniqueness hash). */
+    encryptionKey: string;
+  };
   notifications: {
     sms?: {
       enabled?: boolean;
@@ -139,6 +145,10 @@ export default (): AppConfig => ({
   logging: {
     httpBodies: bool(process.env.LOG_HTTP_BODIES, false),
     llmPayloads: bool(process.env.LOG_LLM_PAYLOADS, false),
+  },
+  kyc: {
+    provider: (process.env.KYC_PROVIDER ?? '').trim().toLowerCase(),
+    encryptionKey: process.env.KYC_ENCRYPTION_KEY ?? '',
   },
   biometrics: {
     provider: (process.env.BIOMETRIC_PROVIDER ?? '').trim().toLowerCase(),

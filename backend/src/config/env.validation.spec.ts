@@ -129,4 +129,23 @@ describe('validateEnv', () => {
       }),
     ).not.toThrow();
   });
+
+  describe('kyc provider', () => {
+    const bio = randomBytes(32).toString('base64');
+    it('needs its own 32-byte key, distinct from the biometric key', () => {
+      const base = {
+        JWT_SECRET: secret,
+        KYC_PROVIDER: 'didit',
+        DIDIT_API_KEY: 'k',
+        DIDIT_KEY_TYPE: 'live',
+      };
+      expect(() => validateEnv(base)).toThrow(/KYC_ENCRYPTION_KEY/);
+      expect(() =>
+        validateEnv({ ...base, KYC_ENCRYPTION_KEY: bio, BIOMETRIC_ENCRYPTION_KEY: bio }),
+      ).toThrow(/must differ/);
+      expect(() =>
+        validateEnv({ ...base, KYC_ENCRYPTION_KEY: randomBytes(32).toString('base64') }),
+      ).not.toThrow();
+    });
+  });
 });

@@ -67,13 +67,29 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     errors.push('BIOMETRIC_STEP_UP_AMOUNT_MINOR must be a non-negative integer (minor units)');
   }
 
-  if (
-    String(config.BIOMETRIC_PROVIDER ?? '')
-      .trim()
-      .toLowerCase() === 'didit'
-  ) {
+  if (typeof config.KYC_PROVIDER === 'string' && config.KYC_PROVIDER.trim()) {
+    try {
+      parseEncryptionKey(String(config.KYC_ENCRYPTION_KEY ?? ''));
+    } catch {
+      errors.push('KYC_ENCRYPTION_KEY must be 32 random bytes, base64-encoded');
+    }
+    if (
+      config.KYC_ENCRYPTION_KEY &&
+      config.KYC_ENCRYPTION_KEY === config.BIOMETRIC_ENCRYPTION_KEY
+    ) {
+      errors.push('KYC_ENCRYPTION_KEY must differ from BIOMETRIC_ENCRYPTION_KEY');
+    }
+  }
+
+  const usesDidit = ['BIOMETRIC_PROVIDER', 'KYC_PROVIDER'].some(
+    (name) =>
+      String(config[name] ?? '')
+        .trim()
+        .toLowerCase() === 'didit',
+  );
+  if (usesDidit) {
     if (!String(config.DIDIT_API_KEY ?? '').trim()) {
-      errors.push('DIDIT_API_KEY is required when BIOMETRIC_PROVIDER=didit');
+      errors.push('DIDIT_API_KEY is required when a provider is set to didit');
     }
     const keyType = String(config.DIDIT_KEY_TYPE ?? '')
       .trim()

@@ -73,7 +73,7 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
     return (
       <View style={styles.cameraWrap}>
         <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="front" />
-        <FaceGuide />
+        <FaceGuide topInset={150} bottomInset={300} />
         <View style={styles.overlay}>
           <Text style={styles.cameraTitle}>{formatMoney(amount)}</Text>
           <View />

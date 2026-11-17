@@ -3,7 +3,7 @@ import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-use
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { KycService } from './kyc.service';
-import { SubmitKycDto, VerifyKycDto } from './kyc.dto';
+import { SubmitKycDto, VerifyBvnDto, VerifyKycDto } from './kyc.dto';
 
 @Controller('kyc')
 export class KycController {
@@ -13,6 +13,12 @@ export class KycController {
   @Post('submit')
   submit(@CurrentUser() user: AuthenticatedUser, @Body() dto: SubmitKycDto) {
     return this.kyc.submitKyc(user.userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('bvn')
+  verifyBvn(@CurrentUser() user: AuthenticatedUser, @Body() dto: VerifyBvnDto) {
+    return this.kyc.verifyBvn(user.userId, dto);
   }
 
   @UseGuards(JwtAuthGuard)

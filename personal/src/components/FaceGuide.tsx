@@ -1,18 +1,34 @@
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useState } from 'react';
+import { LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import { colors } from '../theme';
+
+type Props = {
+  /** Space kept clear above the oval (title text). */
+  topInset?: number;
+  /** Space kept clear below the oval (buttons). */
+  bottomInset?: number;
+};
 
 /**
  * Face-capture overlay: dims everything outside a portrait oval so the user
- * fits their face inside it. Purely visual; sits on top of the camera preview.
+ * fits their face inside it. The oval is sized from the space actually left
+ * between the insets, so it never runs under the title or the buttons.
+ * Purely visual; sits on top of the camera preview.
  */
-export default function FaceGuide() {
-  const { width } = useWindowDimensions();
-  const w = Math.min(width * 0.7, 300);
-  const h = w * 1.32;
-  const ring = 1200; // wide enough to dim the whole preview around the oval
-  return (
-    <View pointerEvents="none" style={styles.fill}>
-      {/* The thick translucent border is the dimmed area; the inside stays clear. */}
+export default function FaceGuide({ topInset = 170, bottomInset = 250 }: Props) {
+  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
+  const onLayout = (e: LayoutChangeEvent) =>
+    setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height });
+
+  let content = null;
+  if (box) {
+    const availH = Math.max(box.h - topInset - bottomInset, 160);
+    const w = Math.min(box.w * 0.72, 300, availH / 1.2);
+    const h = Math.min(w * 1.3, availH);
+    const ring = 1500; // wide enough to dim the whole preview around the oval
+    // Centre of the free band, relative to the middle of the screen.
+    const offsetY = (topInset - bottomInset) / 2;
+    content = (
       <View
         style={{
           width: w + ring * 2,
@@ -20,7 +36,7 @@ export default function FaceGuide() {
           borderWidth: ring,
           borderRadius: w / 2 + ring,
           borderColor: 'rgba(0,0,0,0.55)',
-          transform: [{ translateY: -h * 0.08 }],
+          transform: [{ translateY: offsetY }],
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -35,6 +51,12 @@ export default function FaceGuide() {
           }}
         />
       </View>
+    );
+  }
+
+  return (
+    <View pointerEvents="none" style={styles.fill} onLayout={onLayout}>
+      {content}
     </View>
   );
 }

@@ -21,7 +21,13 @@ describe('KycService', () => {
   beforeEach(() => {
     kycRecordsRepo = mockRepo(null);
     usersRepo = mockRepo(null);
-    service = new KycService(kycRecordsRepo, usersRepo);
+    service = new KycService(
+      kycRecordsRepo,
+      usersRepo,
+      mockRepo(null),
+      { get: jest.fn() } as any,
+      null,
+    );
   });
 
   describe('submitKyc', () => {

@@ -94,6 +94,9 @@ export interface KycState {
   userId: string;
   kycTier: number;
   status: KycStatus;
+  /** Whether automatic BVN verification is configured on the server. */
+  bvnAvailable: boolean;
+  bvnLast4: string | null;
 }
 
 export interface BiometricEnrollment {

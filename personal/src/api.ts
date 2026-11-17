@@ -167,8 +167,9 @@ export class VireoApi {
 
   /* ── KYC ── */
 
-  async submitKyc(provider: string, payload?: string) {
-    const { data } = await this.client.post('/kyc/submit', { provider, payload });
+  /** Tier 1: checks name, date of birth and BVN against the bank record. */
+  async verifyBvn(input: { bvn: string; firstName: string; lastName: string; dateOfBirth: string }) {
+    const { data } = await this.client.post<KycState>('/kyc/bvn', input);
     return data;
   }
 
