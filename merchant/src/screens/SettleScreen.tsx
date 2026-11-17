@@ -92,7 +92,7 @@ export default function SettleScreen({ navigation }: Props) {
   if (stage === 'done' && result) {
     const failed = result.status === 'failed';
     return (
-      <Screen background={failed ? colors.bg : colors.accent}>
+      <Screen background={failed ? colors.bg : colors.accent} scroll={false}>
         <View style={styles.done}>
           <Text style={styles.doneTitle}>
             {failed ? 'Payout failed' : result.status === 'completed' ? 'Cashed out' : 'Payout on its way'}

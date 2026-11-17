@@ -149,7 +149,13 @@ export class DiditProvider implements BiometricProvider {
     // Status and timing only; bodies describe a person's face.
     this.logger.log(`Didit ${path} -> ${response.status} ${Date.now() - started}ms`);
     if (!response.ok) {
-      this.logger.error(`Didit ${path} failed: ${response.status}`);
+      // Error bodies carry a short reason ("no write access to sessions"), not
+      // image data, so a trimmed copy is safe and makes setup problems obvious.
+      const reason = await response
+        .json()
+        .then((b: { detail?: unknown }) => String(b?.detail ?? '').slice(0, 200))
+        .catch(() => '');
+      this.logger.error(`Didit ${path} failed: ${response.status} ${reason}`.trim());
       if (response.status === 400) {
         throw new BadRequestException('That image could not be used. Please try again.');
       }

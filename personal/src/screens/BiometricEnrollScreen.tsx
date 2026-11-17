@@ -7,6 +7,7 @@ import { getDeviceId } from '../lib/deviceKey';
 import { errorMessage } from '../lib/format';
 import type { RootStackParamList } from '../navigation';
 import { Button, Card, ErrorBanner, Header, Screen } from '../components/ui';
+import { Pop } from '../components/motion';
 import { colors, spacing, type } from '../theme';
 
 type Props = StackScreenProps<RootStackParamList, 'BiometricEnroll'>;
@@ -76,12 +77,16 @@ export default function BiometricEnrollScreen({ navigation }: Props) {
 
   if (stage === 'done') {
     return (
-      <Screen background={colors.accent}>
+      // scroll={false} gives the body a bounded height so the content can centre.
+      <Screen background={colors.accent} scroll={false}>
         <View style={styles.center}>
+          <Pop style={styles.tick}>
+            <Text style={styles.tickText}>✓</Text>
+          </Pop>
           <Text style={styles.doneTitle}>Face enrolled</Text>
           <Text style={styles.doneBody}>You can now pay at supporting tills with your face.</Text>
         </View>
-        <Button title="Done" onPress={() => navigation.goBack()} />
+        <Button title="Done" onPress={() => navigation.goBack()} style={{ marginBottom: spacing.xl }} />
       </Screen>
     );
   }
@@ -114,6 +119,8 @@ const styles = StyleSheet.create({
   cameraTitle: { ...type.display, color: colors.white },
   guide: { width: 260, height: 260, borderRadius: 130, borderWidth: 4, borderColor: colors.accent },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
+  tick: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.black, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
+  tickText: { color: colors.accent, fontSize: 48, fontWeight: '800' },
   doneTitle: { ...type.display, color: colors.black },
   doneBody: { ...type.body, color: colors.black, textAlign: 'center' },
 });

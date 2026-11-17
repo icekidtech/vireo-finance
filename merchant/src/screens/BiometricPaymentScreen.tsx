@@ -86,7 +86,7 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
   if (stage === 'result' && result) {
     const paid = result.status === 'paid';
     return (
-      <Screen background={paid ? colors.accent : colors.bg}>
+      <Screen background={paid ? colors.accent : colors.bg} scroll={false}>
         <View style={styles.center}>
           <Pop style={[styles.badge, !paid && { backgroundColor: result.status === 'denied' ? colors.danger : colors.warn }]}>
             <Text style={[styles.badgeText, paid && { color: colors.accent }]}>{paid ? '✓' : '!'}</Text>

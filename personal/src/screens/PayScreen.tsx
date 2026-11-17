@@ -222,7 +222,7 @@ export default function PayScreen({ navigation, route }: Props) {
   if (stage === 'done' && sent) {
     const failed = sent.status === 'failed';
     return (
-      <Screen background={failed ? colors.bg : colors.accent}>
+      <Screen background={failed ? colors.bg : colors.accent} scroll={false}>
         <View style={styles.done}>
           <Pop style={[styles.tick, failed && { backgroundColor: colors.danger }]}>
             <Text style={[styles.tickText, failed && { color: colors.white }]}>{failed ? '!' : '✓'}</Text>
