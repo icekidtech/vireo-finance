@@ -49,6 +49,7 @@ const TAB_ICONS: Record<keyof TabParamList, string> = {
 function Tabs() {
   return (
     <Tab.Navigator
+      sceneContainerStyle={{ flex: 1 }}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: colors.accent,
@@ -81,7 +82,8 @@ function AppNavigator() {
 
   const navigator = (
     <NavigationContainer theme={navTheme}>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      {/* cardStyle flex:1 gives screens a bounded height on web; without it ScrollViews grow to their content and never scroll. */}
+      <Stack.Navigator screenOptions={{ headerShown: false, cardStyle: { flex: 1 } }}>
         {!token ? (
           <>
             {/* The marketing page is web-only; phones open straight to sign-in. */}

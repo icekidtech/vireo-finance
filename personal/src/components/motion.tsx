@@ -282,7 +282,8 @@ export function Glow({
   pulse?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
-  const rings = 9;
+  // Many faint rings read as a smooth falloff; few rings show as visible bands.
+  const rings = 30;
   const body = (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }} pointerEvents="none">
       {Array.from({ length: rings }, (_, i) => {
@@ -296,7 +297,7 @@ export function Glow({
               height: d,
               borderRadius: d / 2,
               backgroundColor: color,
-              opacity: intensity,
+              opacity: (intensity * 9) / rings,
             }}
           />
         );
