@@ -26,7 +26,7 @@ import { businessNameSimilarity, nameMatches } from '../kyc/names';
 import { Merchant } from './merchant.entity';
 
 export type VerificationReason =
-  'verified' | 'rejected' | 'identity_required' | 'bank_required' | 'name_mismatch';
+  'verified' | 'rejected' | 'identity_required';
 
 export interface VerificationOutcome {
   kybStatus: string;
@@ -175,16 +175,13 @@ export class MerchantVerificationService {
 
     const identity = await this.identities.findOne({ where: { userId } });
     if (!identity || user.kycTier < 1) return outcome('identity_required');
-    if (!merchant.settlementAccountName) return outcome('bank_required');
 
-    if (!nameMatches(merchant.settlementAccountName, identity.firstName, identity.lastName)) {
-      return outcome('name_mismatch');
-    }
-
+    // Auto-verify business as soon as BVN is verified (Level 1).
+    // Payout account verification happens separately when they want to cash out.
     merchant.kybStatus = 'verified';
     await this.merchants.save(merchant);
     this.logger.log(
-      `Merchant ${merchant.id} verified automatically (owner BVN + matching payout name)`,
+      `Merchant ${merchant.id} verified automatically (owner BVN verified)`,
     );
     return { kybStatus: 'verified', reason: 'verified', kycTier: user.kycTier };
   }

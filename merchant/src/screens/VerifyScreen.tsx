@@ -24,15 +24,9 @@ function formatDob(raw: string): string {
 }
 
 const OUTCOME_TEXT: Record<string, { tone: 'warn' | 'success'; message: string }> = {
-  verified: { tone: 'success', message: 'Your business is verified. Cash out and your bank account number are unlocked.' },
+  verified: { tone: 'success', message: 'Your business is verified. You can now receive payments and cash out.' },
   rejected: { tone: 'warn', message: 'Your business verification was rejected. Contact support.' },
   identity_required: { tone: 'warn', message: 'Verify your identity below to continue.' },
-  bank_required: { tone: 'warn', message: 'Add your payout bank account in Account → Edit business & bank, then check again.' },
-  name_mismatch: {
-    tone: 'warn',
-    message:
-      'Your payout account name does not match your BVN name, so we need to review your business by hand. Use an account in your own name for instant verification.',
-  },
 };
 
 /** Identity (BVN) check for the owner, then automatic business verification. */
@@ -86,6 +80,13 @@ export default function VerifyScreen({ navigation }: Props) {
       await api.verifyBvn({ bvn, firstName: firstName.trim(), lastName: lastName.trim(), dateOfBirth: dob, selfie: selfie! });
       setBvn(''); // never keep the BVN in memory longer than needed
       setSelfie(null);
+      // After BVN verification, provision the merchant deposit account (Paga sub-account)
+      try {
+        await api.getMerchantDepositAccount();
+      } catch (e) {
+        // If it fails, it's not critical - user can get it later from ReceiveScreen
+        console.warn('Could not provision deposit account:', e);
+      }
     }, 'Could not verify your details');
 
   if (loading && !data) return <Loading />;
@@ -178,10 +179,12 @@ export default function VerifyScreen({ navigation }: Props) {
       ) : identityDone ? (
         <View style={{ marginTop: spacing.lg }}>
           <Text style={styles.lead}>
-            Your identity is verified. We verify your business automatically when your payout bank account is in your
-            own name.
+            Your identity is verified. Checking your business verification status...
           </Text>
-          <Button title="Check again" variant="accent" loading={busy} onPress={() => run(async () => undefined, 'Could not check')} />
+          <Button title="Check again" variant="accent" loading={busy} onPress={() => run(async () => {
+            // Trigger the verification check which auto-verifies after BVN
+            await api.checkMerchantVerification();
+          }, 'Could not check')} />
         </View>
       ) : kyc && !kyc.bvnAvailable ? (
         <NoticeBanner message="Identity verification isn't available yet. We'll let you know when it is." />

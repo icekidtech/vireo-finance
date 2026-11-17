@@ -58,10 +58,12 @@ export class MerchantDepositService {
     const userId = owner.id;
 
     // A BadGatewayException from Paga propagates; the global filter shows a generic message.
+    // Use the owner's name (not business name) for Paga's registerPersistentPaymentAccount API
+    // which requires real person names for firstName/lastName fields.
     const created = await this.paga.createVirtualAccount({
       userId,
       referenceId: merchant.id,
-      name: merchant.businessName,
+      name: owner.name,
       phone: owner.phone,
     });
     const saved = await this.accounts.createVirtualAccount(

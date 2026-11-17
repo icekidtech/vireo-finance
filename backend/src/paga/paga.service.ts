@@ -48,6 +48,10 @@ export class PagaService {
     const { firstName, lastName } = splitName(input.name);
     const callbackUrl = this.callbackUrl();
 
+    this.logger.log(
+      `Creating virtual account: ref=${referenceNumber}, name=${input.name}, phone=${input.phone}`,
+    );
+
     const raw = await this.collect(
       'registerPersistentPaymentAccount',
       {
@@ -66,6 +70,8 @@ export class PagaService {
     if (!accountNumber) {
       throw new BadGatewayException('Paga did not return a persistent account number');
     }
+
+    this.logger.log(`Virtual account created: ${accountNumber} for ${referenceNumber}`);
 
     return {
       accountNumber,
@@ -408,11 +414,28 @@ export class PagaService {
       `${this.required('paga.apiKey')}:${this.required('paga.apiSecret')}`,
     ).toString('base64');
 
+    const hashKey = this.requiredHashKey();
+    const hash = pagaHash(hashValues, hashKey);
+
+    this.logger.log(
+      `[Paga collect ${operation}] Request body: ${JSON.stringify(body, null, 2)}`,
+    );
+    this.logger.log(
+      `[Paga collect ${operation}] Hash values: ${JSON.stringify(hashValues)}`,
+    );
+    this.logger.log(
+      `[Paga collect ${operation}] Hash key length: ${hashKey.length}, Hash: ${hash.substring(0, 20)}...`,
+    );
+
     const raw = await this.send('collect', operation, body, {
       'content-type': 'application/json',
       authorization: `Basic ${credentials}`,
-      hash: pagaHash(hashValues, this.requiredHashKey()),
+      hash,
     });
+
+    this.logger.log(
+      `[Paga collect ${operation}] Response: ${JSON.stringify(raw, null, 2)}`,
+    );
 
     const code = String(raw.statusCode ?? '');
     if (code !== '0') {
@@ -435,12 +458,32 @@ export class PagaService {
       throw new BadGatewayException(`Paga ${api} base URL is not configured`);
     }
 
+    const url = `${baseUrl}/${operation}`;
+    
+    // CRITICAL: Paga Collect API requires Accept-Language: en header.
+    // Node's fetch sends Accept-Language: * by default, which causes HTTP 500 "system error".
+    // See: https://paga-slack-thread (Sherif-deen Abdur-roheem resolution)
+    const requestHeaders: Record<string, string> = {
+      ...headers,
+      'accept-language': 'en',
+    };
+
+    this.logger.log(
+      `[Paga ${api} ${operation}] POST ${url}`,
+    );
+    this.logger.log(
+      `[Paga ${api} ${operation}] Headers: ${JSON.stringify({ ...requestHeaders, authorization: requestHeaders.authorization ? '[redacted]' : undefined, hash: requestHeaders.hash ? `${requestHeaders.hash.substring(0, 20)}...` : undefined }, null, 2)}`,
+    );
+    this.logger.log(
+      `[Paga ${api} ${operation}] Body: ${JSON.stringify(body, null, 2)}`,
+    );
+
     const started = Date.now();
     let response: Response;
     try {
-      response = await fetch(`${baseUrl}/${operation}`, {
+      response = await fetch(url, {
         method: 'POST',
-        headers,
+        headers: requestHeaders,
         body: JSON.stringify(body),
       });
     } catch (error) {
@@ -451,8 +494,15 @@ export class PagaService {
     }
 
     const text = await response.text();
-    // Status line only: request/response bodies carry account and personal data.
-    this.logger.log(`Paga ${api} ${operation} -> ${response.status} ${Date.now() - started}ms`);
+    const elapsed = Date.now() - started;
+    
+    this.logger.log(
+      `[Paga ${api} ${operation}] Response status: ${response.status} (${elapsed}ms)`,
+    );
+    this.logger.log(
+      `[Paga ${api} ${operation}] Response body: ${text}`,
+    );
+
     if (!response.ok) {
       let detail = text;
       try {

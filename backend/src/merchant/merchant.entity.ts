@@ -37,7 +37,7 @@ export class Merchant {
   @Column({ type: 'uuid', nullable: true })
   settlementAccountId: string | null;
 
-  @Column({ type: 'varchar', length: 16, nullable: true })
+  @Column({ type: 'varchar', length: 40, nullable: true })
   settlementBankCode: string | null;
 
   @Column({ type: 'varchar', length: 32, nullable: true })

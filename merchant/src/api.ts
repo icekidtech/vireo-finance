@@ -120,6 +120,11 @@ export class VireoApi {
     return data;
   }
 
+  async updateMerchant(input: UpdateMerchantInput) {
+    const { data } = await this.client.patch<Merchant>('/merchants/me', input);
+    return data;
+  }
+
   /** Bank account customers can transfer to; credited to the merchant balance. */
   /* ── Transaction PIN ── */
 
@@ -166,6 +171,12 @@ export class VireoApi {
   /** Level 2: submits the CAC number (and TIN) for review. */
   async submitRegistration(input: { cacNumber: string; tin?: string; certificateDocumentId: string }) {
     const { data } = await this.client.post<BusinessLevels>('/merchants/me/registration', input);
+    return data;
+  }
+
+  /** Re-checks whether the merchant now qualifies for automatic verification. */
+  async checkMerchantVerification() {
+    const { data } = await this.client.post<VerificationOutcome>('/merchants/me/verification');
     return data;
   }
 
