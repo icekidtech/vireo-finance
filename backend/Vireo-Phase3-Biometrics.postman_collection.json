@@ -1,0 +1,702 @@
+{
+	"info": {
+		"_postman_id": "vireo-phase3-biometrics",
+		"name": "Vireo Finance - Phase 3 Biometrics",
+		"description": "Complete API collection for testing Phase 3 biometric enrollment, verification, and terminal payments.\n\n**Setup:**\n1. Set environment variable `baseUrl` to `http://localhost:3050`\n2. Register a user to get a JWT token\n3. Set the token in the collection variables\n4. Run requests in order for a complete flow",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3050",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "consentId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "faceEnrollmentId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "voiceEnrollmentId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "orderReference",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "0. Authentication",
+			"item": [
+				{
+					"name": "Register User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200 || pm.response.code === 201) {",
+									"    // User registered successfully",
+									"    console.log('✅ User registered successfully');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"+2348012345678\",\n  \"name\": \"Test User\",\n  \"handle\": \"testuser\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/auth/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"register"
+							]
+						},
+						"description": "Register a new user. This will return user details but no token yet."
+					},
+					"response": []
+				},
+				{
+					"name": "Request OTP",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    if (response.devCode) {",
+									"        console.log('✅ OTP Code (dev mode):', response.devCode);",
+									"        pm.collectionVariables.set('otpCode', response.devCode);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"+2348012345678\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/auth/otp/request",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"otp",
+								"request"
+							]
+						},
+						"description": "Request an OTP code. In development mode, the code is returned in the response."
+					},
+					"response": []
+				},
+				{
+					"name": "Verify OTP & Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('token', response.accessToken);",
+									"    console.log('✅ Token saved:', response.accessToken.substring(0, 20) + '...');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"+2348012345678\",\n  \"code\": \"123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/auth/otp/verify",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"otp",
+								"verify"
+							]
+						},
+						"description": "Verify the OTP code and get a JWT token. Update the code with the value from the previous request."
+					},
+					"response": []
+				}
+			],
+			"description": "Authentication flow: register → request OTP → verify OTP → get token"
+		},
+		{
+			"name": "1. Biometric Consent",
+			"item": [
+				{
+					"name": "Grant Consent",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200 || pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('consentId', response.id);",
+									"    console.log('✅ Consent granted! ID:', response.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"consentVersion\": \"1.0\",\n  \"metadata\": {\n    \"deviceId\": \"postman-test-device\",\n    \"ipAddress\": \"127.0.0.1\",\n    \"userAgent\": \"Postman/10.0\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/biometrics/consent",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"biometrics",
+								"consent"
+							]
+						},
+						"description": "Grant explicit consent for biometric data collection. This is required before enrollment."
+					},
+					"response": []
+				},
+				{
+					"name": "Revoke Consent",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/biometrics/consent",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"biometrics",
+								"consent"
+							]
+						},
+						"description": "Revoke consent and delete all associated biometric enrollments. Use with caution!"
+					},
+					"response": []
+				}
+			],
+			"description": "Consent management endpoints"
+		},
+		{
+			"name": "2. Biometric Enrollment",
+			"item": [
+				{
+					"name": "Enroll Face",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200 || pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('faceEnrollmentId', response.id);",
+									"    console.log('✅ Face enrolled! ID:', response.id);",
+									"    console.log('   Quality Score:', response.qualityScore);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"type\": \"face\",\n  \"sampleBase64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\",\n  \"consentId\": \"{{consentId}}\",\n  \"metadata\": {\n    \"captureDevice\": \"postman\",\n    \"captureTimestamp\": \"{{$timestamp}}\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/biometrics/enroll",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"biometrics",
+								"enroll"
+							]
+						},
+						"description": "Enroll a face biometric. The sampleBase64 is a mock 1x1 PNG image. In production, this would be a real face photo."
+					},
+					"response": []
+				},
+				{
+					"name": "Enroll Voice",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200 || pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('voiceEnrollmentId', response.id);",
+									"    console.log('✅ Voice enrolled! ID:', response.id);",
+									"    console.log('   Quality Score:', response.qualityScore);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"type\": \"voice\",\n  \"sampleBase64\": \"UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQAAAAA=\",\n  \"consentId\": \"{{consentId}}\",\n  \"metadata\": {\n    \"captureDevice\": \"postman\",\n    \"phrase\": \"My voice is my password\",\n    \"captureTimestamp\": \"{{$timestamp}}\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/biometrics/enroll",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"biometrics",
+								"enroll"
+							]
+						},
+						"description": "Enroll a voice biometric. The sampleBase64 is a mock WAV file header. In production, this would be real audio recording."
+					},
+					"response": []
+				},
+				{
+					"name": "List Enrollments",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    console.log('✅ Found', response.enrollments.length, 'enrollment(s)');",
+									"    response.enrollments.forEach(e => {",
+									"        console.log('  -', e.type, '| Status:', e.status, '| Quality:', e.qualityScore);",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/biometrics/enrollments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"biometrics",
+								"enrollments"
+							]
+						},
+						"description": "List all biometric enrollments for the authenticated user."
+					},
+					"response": []
+				},
+				{
+					"name": "Revoke Face Enrollment",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"type\": \"face\",\n  \"reason\": \"Testing revocation\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/biometrics/enrollments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"biometrics",
+								"enrollments"
+							]
+						},
+						"description": "Revoke a specific biometric enrollment by type."
+					},
+					"response": []
+				}
+			],
+			"description": "Biometric enrollment management"
+		},
+		{
+			"name": "3. Audit & Monitoring",
+			"item": [
+				{
+					"name": "Get Verification Attempts",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    console.log('✅ Found', response.attempts.length, 'attempt(s)');",
+									"    response.attempts.slice(0, 3).forEach(a => {",
+									"        console.log('  -', a.type, '| Result:', a.result, '| Match:', a.matchScore);",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/biometrics/attempts",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"biometrics",
+								"attempts"
+							]
+						},
+						"description": "Get audit log of all biometric verification attempts for the authenticated user."
+					},
+					"response": []
+				}
+			],
+			"description": "Audit and monitoring endpoints"
+		},
+		{
+			"name": "4. Merchant Terminal Payment",
+			"item": [
+				{
+					"name": "Create Merchant Order",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200 || pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('orderReference', response.reference);",
+									"    console.log('✅ Order created! Reference:', response.reference);",
+									"    console.log('   Amount:', response.amount, response.currency);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": \"100.00\",\n  \"note\": \"Test purchase\",\n  \"expiresInSeconds\": 300\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/merchants/orders",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"merchants",
+								"orders"
+							]
+						},
+						"description": "Create a merchant payment order. You must be onboarded as a merchant first."
+					},
+					"response": []
+				},
+				{
+					"name": "Terminal Payment - Face",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    console.log('✅ Payment Status:', response.status);",
+									"    if (response.status === 'completed') {",
+									"        console.log('   Amount:', response.transfer.amount, response.transfer.currency);",
+									"        console.log('   Transfer ID:', response.transfer.id);",
+									"    } else if (response.status === 'step_up_required') {",
+									"        console.log('   ⚠️  Step-up challenge required');",
+									"        console.log('   Match Score:', response.matchScore);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderReference\": \"{{orderReference}}\",\n  \"customerIdentifier\": \"+2348012345678\",\n  \"biometricType\": \"face\",\n  \"biometricSample\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\",\n  \"metadata\": {\n    \"terminalId\": \"postman-terminal-001\",\n    \"location\": \"Test Store\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/merchants/terminal-payment",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"merchants",
+								"terminal-payment"
+							]
+						},
+						"description": "Process a terminal payment using face biometric. The customer is identified by their phone number and verified via face."
+					},
+					"response": []
+				},
+				{
+					"name": "Terminal Payment - Voice",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderReference\": \"{{orderReference}}\",\n  \"customerIdentifier\": \"@testuser\",\n  \"biometricType\": \"voice\",\n  \"biometricSample\": \"UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQAAAAA=\",\n  \"metadata\": {\n    \"terminalId\": \"postman-terminal-001\",\n    \"location\": \"Test Store\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/merchants/terminal-payment",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"merchants",
+								"terminal-payment"
+							]
+						},
+						"description": "Process a terminal payment using voice biometric. Customer can be identified by handle (e.g., @testuser) or phone."
+					},
+					"response": []
+				},
+				{
+					"name": "Terminal Payment - Multi-Factor",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderReference\": \"{{orderReference}}\",\n  \"customerIdentifier\": \"+2348012345678\",\n  \"biometricType\": \"face\",\n  \"biometricSample\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\",\n  \"secondBiometricType\": \"voice\",\n  \"secondBiometricSample\": \"UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQAAAAA=\",\n  \"metadata\": {\n    \"terminalId\": \"postman-terminal-001\",\n    \"location\": \"Test Store\",\n    \"multiFactorAuth\": true\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/merchants/terminal-payment",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"merchants",
+								"terminal-payment"
+							]
+						},
+						"description": "Process a terminal payment with multi-factor biometric (face + voice). Provides extra security for high-value transactions."
+					},
+					"response": []
+				},
+				{
+					"name": "Terminal Payment - With Step-Up",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderReference\": \"{{orderReference}}\",\n  \"customerIdentifier\": \"+2348012345678\",\n  \"biometricType\": \"face\",\n  \"biometricSample\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\",\n  \"stepUpResponse\": \"1234\",\n  \"metadata\": {\n    \"terminalId\": \"postman-terminal-001\",\n    \"stepUpMethod\": \"pin\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/merchants/terminal-payment",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"merchants",
+								"terminal-payment"
+							]
+						},
+						"description": "Process a payment with step-up challenge. If the first request returns step_up_required, retry with this request including the PIN or passphrase."
+					},
+					"response": []
+				}
+			],
+			"description": "Merchant terminal payment endpoints for biometric transactions"
+		},
+		{
+			"name": "5. Health Check",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/v1/health",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"health"
+							]
+						},
+						"description": "Check if the API is running"
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
