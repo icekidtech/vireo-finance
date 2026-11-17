@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BiometricsController } from './biometrics.controller';
@@ -32,6 +32,11 @@ import { BIOMETRIC_PROVIDER, BiometricProvider } from './biometric-provider';
           const didit = config.getOrThrow<{ apiKey: string; baseUrl: string; timeoutMs: number }>(
             'biometrics.didit',
           );
+          if (config.get<string>('biometrics.didit.keyType') === 'sandbox') {
+            new Logger('Biometrics').warn(
+              'DIDIT_KEY_TYPE=sandbox: Didit approves EVERY image (even a blank one). Face results are not real; use a live key to test matching.',
+            );
+          }
           return new DiditProvider(didit);
         }
         throw new Error(`BIOMETRIC_PROVIDER "${name}" has no adapter in this build`);

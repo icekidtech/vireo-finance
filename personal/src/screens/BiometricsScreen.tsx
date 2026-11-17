@@ -80,6 +80,9 @@ export default function BiometricsScreen({ navigation }: Props) {
       ) : (
         <Empty title="Not enrolled" body="No face enrolled yet." />
       )}
+      {data?.status.testMode ? (
+        <NoticeBanner message="Test mode: the face checker is in sandbox, so it accepts any image. Results here are not real." />
+      ) : null}
       {data && !data.status.available ? (
         <NoticeBanner message="Face payments aren't available yet. We'll let you know when they are." />
       ) : null}

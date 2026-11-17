@@ -191,7 +191,7 @@ export class VireoApi {
   /* ── Biometrics (terminal payments) ── */
 
   async biometricStatus() {
-    const { data } = await this.client.get<{ available: boolean; types: string[] }>('/biometrics/status');
+    const { data } = await this.client.get<{ available: boolean; types: string[]; testMode: boolean }>('/biometrics/status');
     return data;
   }
 

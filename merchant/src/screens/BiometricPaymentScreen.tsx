@@ -29,11 +29,15 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
   const [result, setResult] = useState<TerminalPaymentResult | null>(null);
   // null while checking; false when the server has no biometric vendor set up.
   const [available, setAvailable] = useState<boolean | null>(null);
+  const [testMode, setTestMode] = useState(false);
 
   useEffect(() => {
     api
       .biometricStatus()
-      .then((s) => setAvailable(s.available))
+      .then((s) => {
+        setAvailable(s.available);
+        setTestMode(s.testMode);
+      })
       .catch(() => setAvailable(false));
   }, []);
 
@@ -117,6 +121,9 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
         <BigMoney amount={amount} size="display" />
       </View>
       <ErrorBanner message={error} />
+      {testMode ? (
+        <NoticeBanner message="Test mode: the face checker accepts any image, so any face will pass." />
+      ) : null}
       {available === false ? (
         <NoticeBanner message="Face payments aren't available yet. Use the QR code instead." />
       ) : (

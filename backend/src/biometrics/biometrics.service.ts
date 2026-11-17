@@ -413,9 +413,15 @@ export class BiometricsService {
    */
   /** Both a vendor adapter and the template-encryption key must exist, checked before any work. */
   /** Whether enrollment and verification can run, so clients can say so up front. */
-  status(): { available: boolean; types: string[] } {
+  status(): { available: boolean; types: string[]; testMode: boolean } {
     const available = !!this.provider && !!this.encryptionKey;
-    return { available, types: available ? [BiometricType.FACE] : [] };
+    // A sandbox vendor key approves every image, so clients must say that results are not real.
+    const testMode = this.config.get<string>('biometrics.didit.keyType') === 'sandbox';
+    return {
+      available,
+      types: available ? [BiometricType.FACE] : [],
+      testMode: available && testMode,
+    };
   }
 
   private assertReady(): void {
