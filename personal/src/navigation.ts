@@ -18,4 +18,7 @@ export type RootStackParamList = {
   Kyc: undefined;
   Devices: undefined;
   Biometrics: undefined;
+  BiometricEnroll: undefined;
+  Assistant: undefined;
+  Admin: undefined;
 };

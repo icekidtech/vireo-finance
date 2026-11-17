@@ -40,6 +40,7 @@ export default function AccountScreen({ navigation }: Props) {
       <ErrorBanner message={error} />
 
       <SectionTitle>Settlement bank</SectionTitle>
+      <Button title="Edit business & bank" variant="secondary" small onPress={() => navigation.navigate('EditBusiness')} style={{ alignSelf: 'flex-start', marginBottom: spacing.md }} />
       <Card>
         <ListRow title="Account name" trailing={merchant?.settlementAccountName ?? '—'} />
         <ListRow title="Account number" trailing={merchant?.settlementAccountNumber ?? '—'} />

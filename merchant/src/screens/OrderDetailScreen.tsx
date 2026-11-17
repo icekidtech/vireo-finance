@@ -136,6 +136,14 @@ export default function OrderDetailScreen({ navigation, route }: Props) {
 
           {waiting && (
             <Button
+              title="Customer pays with face"
+              variant="secondary"
+              onPress={() => navigation.navigate('BiometricPayment', { orderReference: order.reference, amount: order.amount })}
+              style={{ marginTop: spacing.md }}
+            />
+          )}
+          {waiting && (
+            <Button
               title="Cancel request"
               variant="danger"
               loading={busy}

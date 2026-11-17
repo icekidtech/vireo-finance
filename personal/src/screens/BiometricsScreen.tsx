@@ -5,16 +5,12 @@ import { api } from '../api';
 import { errorMessage, formatDateTime } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
 import type { RootStackParamList } from '../navigation';
-import { Avatar, Button, Card, Empty, ErrorBanner, Header, ListRow, Loading, NoticeBanner, Screen, SectionTitle, StatusPill } from '../components/ui';
+import { Avatar, Button, Card, Empty, ErrorBanner, Header, ListRow, Loading, Screen, SectionTitle, StatusPill } from '../components/ui';
 import { colors, spacing, type } from '../theme';
 
 type Props = StackScreenProps<RootStackParamList, 'Biometrics'>;
 
-/**
- * Lists and manages face/voice enrollments and the recent verification log.
- * Capturing new samples needs the camera/microphone and ships with the
- * terminal-payment work.
- */
+/** Face enrollments, consent and the recent verification log. */
 export default function BiometricsScreen({ navigation }: Props) {
   const { data, loading, error, refreshing, refresh } = useLoad(async () => {
     const [enrollments, attempts] = await Promise.all([
@@ -82,7 +78,7 @@ export default function BiometricsScreen({ navigation }: Props) {
       ) : (
         <Empty title="Not enrolled" body="No face or voice enrolled yet." />
       )}
-      <NoticeBanner message="Enrolling a new face or voice sample is coming with merchant terminal payments." />
+      <Button title={active.some((e) => e.type === 'face') ? 'Re-enroll face' : 'Enroll your face'} variant="accent" onPress={() => navigation.navigate('BiometricEnroll')} style={{ marginTop: spacing.md }} />
 
       <SectionTitle>Recent verifications</SectionTitle>
       {data && data.attempts.length > 0 ? (

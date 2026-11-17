@@ -11,6 +11,7 @@ export interface PublicUser {
   name: string;
   kycTier: number;
   status?: string;
+  role?: 'user' | 'admin';
 }
 
 export interface MyAccount {
@@ -123,4 +124,38 @@ export interface OtpRequestResult {
 export interface VerifyOtpResult {
   accessToken: string;
   user: PublicUser;
+}
+
+export interface ChatDraft {
+  transferId: string;
+  amount: string;
+  fee: string;
+  recipientName: string | null;
+  challenge: Challenge;
+}
+
+export interface ChatResponse {
+  sessionId: string;
+  reply: string;
+  toolsExecuted: string[];
+  drafts: ChatDraft[];
+}
+
+export interface KycRecord {
+  id: string;
+  userId: string;
+  tier: number;
+  provider: string;
+  status: KycStatus;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface AdminMerchant {
+  id: string;
+  handle: string;
+  businessName: string;
+  kybStatus: string;
+  status: string;
+  createdAt: string;
 }

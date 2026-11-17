@@ -13,6 +13,8 @@ import AccountScreen from './src/screens/AccountScreen';
 import OrderDetailScreen from './src/screens/OrderDetailScreen';
 import SettleScreen from './src/screens/SettleScreen';
 import DevicesScreen from './src/screens/DevicesScreen';
+import EditBusinessScreen from './src/screens/EditBusinessScreen';
+import BiometricPaymentScreen from './src/screens/BiometricPaymentScreen';
 import type { RootStackParamList, TabParamList } from './src/navigation';
 import { colors } from './src/theme';
 
@@ -75,6 +77,8 @@ function AppNavigator() {
             <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
             <Stack.Screen name="Settle" component={SettleScreen} />
             <Stack.Screen name="Devices" component={DevicesScreen} />
+            <Stack.Screen name="EditBusiness" component={EditBusinessScreen} />
+            <Stack.Screen name="BiometricPayment" component={BiometricPaymentScreen} />
           </>
         )}
       </Stack.Navigator>

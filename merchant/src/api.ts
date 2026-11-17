@@ -8,6 +8,7 @@ import type {
   PublicUser,
   Settlement,
   SettlementDraft,
+  TerminalPaymentResult,
   VerifyOtpResult,
 } from './types';
 
@@ -16,6 +17,13 @@ export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://loca
 export interface OnboardMerchantInput {
   businessName: string;
   handle: string;
+  settlementBankCode?: string;
+  settlementAccountNumber?: string;
+  settlementAccountName?: string;
+}
+
+export interface UpdateMerchantInput {
+  businessName?: string;
   settlementBankCode?: string;
   settlementAccountNumber?: string;
   settlementAccountName?: string;
@@ -115,6 +123,12 @@ export class VireoApi {
     return data;
   }
 
+  /** Bank details must be sent as a complete set; the API rejects partial sets. */
+  async updateMerchant(input: UpdateMerchantInput) {
+    const { data } = await this.client.patch<Merchant>('/merchants/me', input);
+    return data;
+  }
+
   async getDashboard() {
     const { data } = await this.client.get<MerchantDashboard>('/merchants/dashboard');
     return data;
@@ -170,9 +184,22 @@ export class VireoApi {
 
   /* ── Biometrics (terminal payments) ── */
 
-  /** Raw access for endpoints still being wired (terminal payment). */
-  get http() {
-    return this.client;
+  /**
+   * Face/voice payment at the till. Always resolves with a `status`; the
+   * server never says why a biometric was denied.
+   */
+  async terminalPayment(input: {
+    orderReference: string;
+    customerIdentifier: string;
+    biometricType: 'face' | 'voice';
+    biometricSample: string;
+  }) {
+    const { data } = await this.client.post<TerminalPaymentResult>(
+      '/merchants/terminal-payment',
+      input,
+      { timeout: 45_000 },
+    );
+    return data;
   }
 }
 

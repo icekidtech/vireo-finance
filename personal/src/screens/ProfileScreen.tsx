@@ -51,6 +51,15 @@ export default function ProfileScreen({ navigation }: Props) {
         <ListRow title="Face & voice" subtitle="Pay without your phone at merchant tills" trailing="›" onPress={() => navigation.navigate('Biometrics')} />
       </Card>
 
+      {user?.role === 'admin' && (
+        <>
+          <SectionTitle>Staff</SectionTitle>
+          <Card style={{ paddingVertical: spacing.sm }}>
+            <ListRow title="Review queue" subtitle="Identity and business verification" trailing="›" onPress={() => navigation.navigate('Admin')} />
+          </Card>
+        </>
+      )}
+
       <Button title="Sign out" variant="secondary" onPress={confirmSignOut} style={{ marginTop: spacing.xl }} />
     </Screen>
   );

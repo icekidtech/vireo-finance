@@ -1,6 +1,9 @@
 import axios, { AxiosInstance } from 'axios';
 import type {
   ActivityItem,
+  AdminMerchant,
+  ChatResponse,
+  KycRecord,
   BiometricAttempt,
   BiometricEnrollment,
   Device,
@@ -197,6 +200,40 @@ export class VireoApi {
 
   async revokeBiometricEnrollment(type: 'face' | 'voice', reason?: string) {
     await this.client.delete('/biometrics/enrollments', { data: { type, reason } });
+  }
+
+  /* ── Assistant ── */
+
+  /** deviceId lets the assistant prepare a transfer you can approve on this phone. */
+  async chat(message: string, sessionId?: string, deviceId?: string) {
+    const { data } = await this.client.post<ChatResponse>(
+      '/agent/chat',
+      { message, sessionId, deviceId },
+      { timeout: 60_000 },
+    );
+    return data;
+  }
+
+  /* ── Admin (role = admin) ── */
+
+  async listPendingKyc() {
+    const { data } = await this.client.get<KycRecord[]>('/kyc/pending');
+    return data;
+  }
+
+  async verifyKyc(id: string, status: 'verified' | 'rejected', tier?: string, reason?: string) {
+    const { data } = await this.client.patch<KycRecord>(`/kyc/${id}/verify`, { status, tier, reason });
+    return data;
+  }
+
+  async listMerchants() {
+    const { data } = await this.client.get<AdminMerchant[]>('/merchants');
+    return data;
+  }
+
+  async verifyKyb(merchantId: string, status: 'verified' | 'rejected') {
+    const { data } = await this.client.patch<AdminMerchant>(`/merchants/${merchantId}/kyb`, { status });
+    return data;
   }
 }
 

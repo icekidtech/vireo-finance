@@ -14,6 +14,9 @@ import TransferDetailScreen from './src/screens/TransferDetailScreen';
 import KycScreen from './src/screens/KycScreen';
 import DevicesScreen from './src/screens/DevicesScreen';
 import BiometricsScreen from './src/screens/BiometricsScreen';
+import BiometricEnrollScreen from './src/screens/BiometricEnrollScreen';
+import AssistantScreen from './src/screens/AssistantScreen';
+import AdminScreen from './src/screens/AdminScreen';
 import type { RootStackParamList, TabParamList } from './src/navigation';
 import { colors } from './src/theme';
 
@@ -77,6 +80,9 @@ function AppNavigator() {
             <Stack.Screen name="Kyc" component={KycScreen} />
             <Stack.Screen name="Devices" component={DevicesScreen} />
             <Stack.Screen name="Biometrics" component={BiometricsScreen} />
+            <Stack.Screen name="BiometricEnroll" component={BiometricEnrollScreen} />
+            <Stack.Screen name="Assistant" component={AssistantScreen} />
+            <Stack.Screen name="Admin" component={AdminScreen} />
           </>
         )}
       </Stack.Navigator>

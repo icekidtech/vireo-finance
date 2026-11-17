@@ -11,7 +11,7 @@ export interface PublicUser {
   name: string;
   kycTier: number;
   status?: string;
-  role?: string;
+  role?: 'user' | 'admin';
 }
 
 export interface Merchant {
@@ -90,3 +90,8 @@ export interface VerifyOtpResult {
   accessToken: string;
   user: PublicUser;
 }
+
+export type TerminalPaymentResult =
+  | { status: 'paid'; transfer: { id: string; amount: string; currency: string; status: string } }
+  | { status: 'step_up_required'; message: string; orderReference: string }
+  | { status: 'denied'; message: string };

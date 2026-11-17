@@ -68,6 +68,8 @@ export default function HomeScreen({ navigation }: Props) {
             <Button title="Activity" variant="secondary" style={{ flex: 1 }} onPress={() => navigation.navigate('Activity')} />
           </View>
 
+          <Button title="Ask Vireo" variant="secondary" onPress={() => navigation.navigate('Assistant')} style={{ marginBottom: spacing.md }} />
+
           {account.virtualAccount && (
             <Card>
               <Text style={styles.cardLabelDark}>ADD MONEY · YOUR ACCOUNT NUMBER</Text>
