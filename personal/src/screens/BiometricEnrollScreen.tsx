@@ -8,6 +8,7 @@ import { errorMessage } from '../lib/format';
 import type { RootStackParamList } from '../navigation';
 import { Button, Card, ErrorBanner, Header, Screen } from '../components/ui';
 import { Pop } from '../components/motion';
+import FaceGuide from '../components/FaceGuide';
 import { colors, spacing, type } from '../theme';
 
 type Props = StackScreenProps<RootStackParamList, 'BiometricEnroll'>;
@@ -62,9 +63,13 @@ export default function BiometricEnrollScreen({ navigation }: Props) {
     return (
       <View style={styles.cameraWrap}>
         <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="front" />
+        <FaceGuide />
         <View style={styles.overlay}>
-          <Text style={styles.cameraTitle}>Centre your face</Text>
-          <View style={styles.guide} />
+          <View style={{ alignItems: 'center' }}>
+            <Text style={styles.cameraTitle}>Fit your face in the oval</Text>
+            <Text style={styles.cameraHint}>Look straight at the camera in good light</Text>
+          </View>
+          <View />
           <View style={{ alignSelf: 'stretch' }}>
             <ErrorBanner message={error} />
             <Button title="Capture" variant="accent" loading={busy} onPress={capture} />
@@ -116,8 +121,8 @@ const styles = StyleSheet.create({
   consent: { ...type.body, color: colors.textMuted, lineHeight: 22 },
   cameraWrap: { flex: 1, backgroundColor: colors.black },
   overlay: { flex: 1, alignItems: 'center', justifyContent: 'space-between', padding: spacing.xl, paddingTop: 80, paddingBottom: 48 },
-  cameraTitle: { ...type.display, color: colors.white },
-  guide: { width: 260, height: 260, borderRadius: 130, borderWidth: 4, borderColor: colors.accent },
+  cameraTitle: { ...type.title, color: colors.white, textAlign: 'center' },
+  cameraHint: { ...type.body, color: colors.white, marginTop: spacing.xs, textAlign: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
   tick: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.black, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
   tickText: { color: colors.accent, fontSize: 48, fontWeight: '800' },

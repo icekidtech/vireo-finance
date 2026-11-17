@@ -8,6 +8,7 @@ import type { TerminalPaymentResult } from '../types';
 import type { RootStackParamList } from '../navigation';
 import { BigMoney, Button, ErrorBanner, Field, Header, NoticeBanner, Screen } from '../components/ui';
 import { Pop } from '../components/motion';
+import FaceGuide from '../components/FaceGuide';
 import { colors, radius, spacing, type } from '../theme';
 
 type Props = StackScreenProps<RootStackParamList, 'BiometricPayment'>;
@@ -72,9 +73,10 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
     return (
       <View style={styles.cameraWrap}>
         <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="front" />
+        <FaceGuide />
         <View style={styles.overlay}>
           <Text style={styles.cameraTitle}>{formatMoney(amount)}</Text>
-          <View style={styles.guide} />
+          <View />
           <Text style={styles.cameraHint}>Ask the customer to look at the camera</Text>
           <Button title="Capture & pay" variant="accent" loading={busy} onPress={captureAndPay} style={{ alignSelf: 'stretch' }} />
           <Button title="Cancel" variant="ghost" onPress={() => setStage('identify')} />
@@ -131,7 +133,6 @@ const styles = StyleSheet.create({
   cameraWrap: { flex: 1, backgroundColor: colors.black },
   overlay: { flex: 1, alignItems: 'center', justifyContent: 'space-between', padding: spacing.xl, paddingTop: 80, paddingBottom: 48 },
   cameraTitle: { ...type.display, color: colors.white },
-  guide: { width: 260, height: 260, borderRadius: 130, borderWidth: 4, borderColor: colors.accent },
   cameraHint: { ...type.bodyStrong, color: colors.white },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 80, gap: spacing.md },
   badge: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.black, alignItems: 'center', justifyContent: 'center' },
