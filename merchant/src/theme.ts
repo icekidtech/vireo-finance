@@ -1,24 +1,31 @@
 /**
- * Design tokens. Visual language borrowed from Cash App: a white canvas, black
- * type, one saturated green accent, oversized numerals and pill-shaped actions.
+ * Design tokens. Dark, green-accented palette: near-black canvas, charcoal
+ * surfaces, one vivid green accent and off-white type.
+ *   #0F0F0F  #202020  #5DD62C  #337418  #F8F8F8
  */
 export const colors = {
-  bg: '#FFFFFF',
-  surface: '#F4F4F5',
-  surfaceStrong: '#E9E9EB',
-  text: '#000000',
-  textMuted: '#6B6B70',
-  textFaint: '#A1A1A6',
-  border: '#E5E5E7',
-  accent: '#00D64F',
-  accentDark: '#00A23C',
-  accentSoft: '#E3FBEB',
-  danger: '#E5322D',
-  dangerSoft: '#FDE9E8',
-  warn: '#B26A00',
-  warnSoft: '#FFF3DC',
-  black: '#000000',
-  white: '#FFFFFF',
+  bg: '#0F0F0F',
+  surface: '#202020',
+  surfaceStrong: '#2B2B2B',
+  text: '#F8F8F8',
+  textMuted: '#A6A6A6',
+  textFaint: '#808080',
+  border: '#2C2C2C',
+  accent: '#5DD62C',
+  /** Green used for text on dark surfaces. */
+  accentDark: '#5DD62C',
+  /** Deep green for fills, badges and borders. */
+  accentDeep: '#337418',
+  accentSoft: '#17280F',
+  danger: '#FF6B63',
+  dangerSoft: '#3A1B19',
+  warn: '#F2B84B',
+  warnSoft: '#33290F',
+  /** "Ink": text/shapes that sit on top of the green accent. */
+  black: '#0F0F0F',
+  white: '#F8F8F8',
+  glass: 'rgba(255,255,255,0.08)',
+  glassBorder: 'rgba(255,255,255,0.18)',
 } as const;
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;

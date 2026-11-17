@@ -1,6 +1,7 @@
-import { ReactNode } from 'react';
+import { ReactNode, useRef } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -18,6 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radius, spacing, type } from '../theme';
 import { initials, splitMoney } from '../lib/format';
+import { FadeIn, Glow } from './motion';
 
 /* ───────────── Layout ───────────── */
 
@@ -40,6 +42,7 @@ export function Screen({
   edges = ['top'],
   background = colors.bg,
 }: ScreenProps) {
+  const body = <FadeIn style={scroll ? undefined : styles.fill}>{children}</FadeIn>;
   const content = scroll ? (
     <ScrollView
       contentContainerStyle={[styles.scrollContent, styles.column, padded && styles.padded]}
@@ -51,13 +54,19 @@ export function Screen({
         ) : undefined
       }
     >
-      {children}
+      {body}
     </ScrollView>
   ) : (
-    <View style={[styles.fill, styles.column, padded && styles.padded]}>{children}</View>
+    <View style={[styles.fill, styles.column, padded && styles.padded]}>{body}</View>
   );
   return (
     <SafeAreaView style={[styles.fill, { backgroundColor: background }]} edges={edges}>
+      {background === colors.bg && (
+        <>
+          <Glow size={760} intensity={0.035} pulse style={{ top: -380, alignSelf: 'center', left: '50%', marginLeft: -380 }} />
+          <Glow size={420} intensity={0.03} color={colors.accentDeep} style={{ bottom: -200, right: -160 }} />
+        </>
+      )}
       {content}
     </SafeAreaView>
   );
@@ -67,21 +76,24 @@ export function Header({
   title,
   onBack,
   right,
+  color = colors.text,
 }: {
   title?: string;
   onBack?: () => void;
   right?: ReactNode;
+  /** Override on coloured (e.g. green) screens where the default text colour has no contrast. */
+  color?: string;
 }) {
   return (
     <View style={styles.header}>
       <View style={styles.headerSide}>
         {onBack && (
           <TouchableOpacity onPress={onBack} hitSlop={12} accessibilityLabel="Back">
-            <Text style={styles.back}>‹</Text>
+            <Text style={[styles.back, { color }]}>‹</Text>
           </TouchableOpacity>
         )}
       </View>
-      <Text style={styles.headerTitle} numberOfLines={1}>
+      <Text style={[styles.headerTitle, { color }]} numberOfLines={1}>
         {title}
       </Text>
       <View style={[styles.headerSide, { alignItems: 'flex-end' }]}>{right}</View>
@@ -107,9 +119,9 @@ export function Card({
   style?: StyleProp<ViewStyle>;
   tone?: 'surface' | 'black' | 'accent';
 }) {
-  const bg =
-    tone === 'black' ? colors.black : tone === 'accent' ? colors.accent : colors.surface;
-  return <View style={[styles.card, { backgroundColor: bg }, style]}>{children}</View>;
+  const bg = tone === 'black' ? '#181818' : tone === 'accent' ? colors.accent : colors.surface;
+  const hero = tone === 'black' ? styles.heroCard : null;
+  return <View style={[styles.card, { backgroundColor: bg }, hero, style]}>{children}</View>;
 }
 
 /* ───────────── Buttons ───────────── */
@@ -133,8 +145,11 @@ export function Button({
   style,
   small,
 }: ButtonProps) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const press = (to: number) =>
+    Animated.spring(scale, { toValue: to, friction: 6, tension: 200, useNativeDriver: Platform.OS !== 'web' }).start();
   const palette = {
-    primary: { bg: colors.black, fg: colors.white },
+    primary: { bg: colors.white, fg: colors.black },
     accent: { bg: colors.accent, fg: colors.black },
     secondary: { bg: colors.surface, fg: colors.text },
     danger: { bg: colors.dangerSoft, fg: colors.danger },
@@ -142,24 +157,27 @@ export function Button({
   }[variant];
   const inactive = disabled || loading;
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={inactive}
-      style={({ pressed }) => [
-        styles.button,
-        small && styles.buttonSmall,
-        { backgroundColor: palette.bg, opacity: inactive ? 0.4 : pressed ? 0.8 : 1 },
-        style,
-      ]}
-    >
-      {loading ? (
-        <ActivityIndicator color={palette.fg} />
-      ) : (
-        <Text style={[styles.buttonText, small && { fontSize: 14 }, { color: palette.fg }]}>
-          {title}
-        </Text>
-      )}
-    </Pressable>
+    <Animated.View style={[{ transform: [{ scale }] }, style as object]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => press(0.96)}
+        onPressOut={() => press(1)}
+        disabled={inactive}
+        style={[
+          styles.button,
+          small && styles.buttonSmall,
+          { backgroundColor: palette.bg, opacity: inactive ? 0.4 : 1 },
+        ]}
+      >
+        {loading ? (
+          <ActivityIndicator color={palette.fg} />
+        ) : (
+          <Text style={[styles.buttonText, small && { fontSize: 14 }, { color: palette.fg }]}>
+            {title}
+          </Text>
+        )}
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -214,7 +232,7 @@ export function NoticeBanner({
 export function Loading() {
   return (
     <View style={styles.center}>
-      <ActivityIndicator size="large" color={colors.text} />
+      <ActivityIndicator size="large" color={colors.accent} />
     </View>
   );
 }
@@ -286,8 +304,8 @@ export function Avatar({
   size?: number;
   tone?: 'surface' | 'accent' | 'black';
 }) {
-  const bg = tone === 'accent' ? colors.accent : tone === 'black' ? colors.black : colors.surfaceStrong;
-  const fg = tone === 'black' ? colors.white : colors.text;
+  const bg = tone === 'accent' ? colors.accent : tone === 'black' ? colors.white : colors.surfaceStrong;
+  const fg = tone === 'accent' || tone === 'black' ? colors.black : colors.text;
   return (
     <View
       style={{
@@ -366,7 +384,7 @@ export function SegmentedControl<T extends string>({
             onPress={() => onChange(o.key)}
             style={[styles.segmentItem, active && styles.segmentItemActive]}
           >
-            <Text style={[styles.segmentText, active && { color: colors.white }]}>{o.label}</Text>
+            <Text style={[styles.segmentText, active && { color: colors.black }]}>{o.label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -457,6 +475,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { ...type.heading, color: colors.text },
   card: { borderRadius: radius.lg, padding: spacing.xl, marginBottom: spacing.md },
+  heroCard: { borderWidth: 1, borderColor: 'rgba(93,214,44,0.35)' },
   button: {
     height: 56,
     borderRadius: radius.pill,
@@ -474,6 +493,8 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     fontSize: 17,
     color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   hint: { ...type.caption, color: colors.textMuted, marginTop: spacing.xs },
   errorBanner: {
@@ -499,7 +520,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   segmentItem: { flex: 1, paddingVertical: 10, borderRadius: radius.pill, alignItems: 'center' },
-  segmentItemActive: { backgroundColor: colors.black },
+  segmentItemActive: { backgroundColor: colors.accent },
   segmentText: { fontSize: 14, fontWeight: '700', color: colors.text },
   keypad: { flexDirection: 'row', flexWrap: 'wrap' },
   key: { width: '33.333%', height: 68, alignItems: 'center', justifyContent: 'center' },

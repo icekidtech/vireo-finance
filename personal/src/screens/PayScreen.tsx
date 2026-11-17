@@ -23,6 +23,7 @@ import {
   SegmentedControl,
   applyKey,
 } from '../components/ui';
+import { Pop } from '../components/motion';
 import { colors, spacing, type } from '../theme';
 
 type Props = CompositeScreenProps<
@@ -162,9 +163,9 @@ export default function PayScreen({ navigation, route }: Props) {
     return (
       <Screen background={failed ? colors.bg : colors.accent}>
         <View style={styles.done}>
-          <View style={[styles.tick, failed && { backgroundColor: colors.danger }]}>
+          <Pop style={[styles.tick, failed && { backgroundColor: colors.danger }]}>
             <Text style={[styles.tickText, failed && { color: colors.white }]}>{failed ? '!' : '✓'}</Text>
-          </View>
+          </Pop>
           <Text style={styles.doneTitle}>
             {failed ? 'Payment failed' : sent.status === 'completed' ? 'Payment sent' : 'Payment processing'}
           </Text>

@@ -27,7 +27,16 @@ const Tab = createBottomTabNavigator<TabParamList>();
 
 const navTheme = {
   ...DefaultTheme,
-  colors: { ...DefaultTheme.colors, background: colors.bg, card: colors.bg, text: colors.text, border: colors.border },
+  dark: true,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: colors.accent,
+    background: colors.bg,
+    card: colors.bg,
+    text: colors.text,
+    border: colors.border,
+    notification: colors.accent,
+  },
 };
 
 const TAB_ICONS: Record<keyof TabParamList, string> = {
@@ -42,9 +51,9 @@ function Tabs() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: colors.black,
+        tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textFaint,
-        tabBarStyle: { borderTopColor: colors.border, backgroundColor: colors.bg },
+        tabBarStyle: { borderTopColor: colors.border, backgroundColor: '#141414' },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
         tabBarIcon: ({ color }: { color: string }) => (
           <Text style={{ fontSize: 22, color, fontWeight: '800' }}>{TAB_ICONS[route.name]}</Text>
@@ -65,7 +74,7 @@ function AppNavigator() {
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}>
-        <ActivityIndicator size="large" color={colors.black} />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -103,7 +112,7 @@ export default function App() {
     <SafeAreaProvider>
       <AuthProvider>
         <AppNavigator />
-        <StatusBar style="dark" />
+        <StatusBar style="light" />
       </AuthProvider>
     </SafeAreaProvider>
   );

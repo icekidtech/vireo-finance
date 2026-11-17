@@ -104,7 +104,7 @@ export default function AssistantScreen({ navigation }: Props) {
               </View>
             ) : (
               <View style={[styles.bubble, item.kind === 'user' ? styles.userBubble : styles.botBubble]}>
-                <Text style={[styles.bubbleText, item.kind === 'user' && { color: colors.white }]}>{item.text}</Text>
+                <Text style={[styles.bubbleText, item.kind === 'user' && { color: colors.black }]}>{item.text}</Text>
               </View>
             )
           }
@@ -133,7 +133,7 @@ export default function AssistantScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: colors.bg },
   bubble: { maxWidth: '85%', paddingVertical: 12, paddingHorizontal: 16, borderRadius: radius.lg },
-  userBubble: { alignSelf: 'flex-end', backgroundColor: colors.black },
+  userBubble: { alignSelf: 'flex-end', backgroundColor: colors.accent },
   botBubble: { alignSelf: 'flex-start', backgroundColor: colors.surface },
   bubbleText: { ...type.body, color: colors.text },
   typing: { ...type.caption, color: colors.textMuted, marginTop: spacing.sm },

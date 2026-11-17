@@ -7,6 +7,7 @@ import { errorMessage, formatMoney } from '../lib/format';
 import type { TerminalPaymentResult } from '../types';
 import type { RootStackParamList } from '../navigation';
 import { BigMoney, Button, ErrorBanner, Field, Header, NoticeBanner, Screen } from '../components/ui';
+import { Pop } from '../components/motion';
 import { colors, radius, spacing, type } from '../theme';
 
 type Props = StackScreenProps<RootStackParamList, 'BiometricPayment'>;
@@ -78,9 +79,9 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
     return (
       <Screen background={paid ? colors.accent : colors.bg}>
         <View style={styles.center}>
-          <View style={[styles.badge, !paid && { backgroundColor: result.status === 'denied' ? colors.danger : colors.warn }]}>
+          <Pop style={[styles.badge, !paid && { backgroundColor: result.status === 'denied' ? colors.danger : colors.warn }]}>
             <Text style={[styles.badgeText, paid && { color: colors.accent }]}>{paid ? '✓' : '!'}</Text>
-          </View>
+          </Pop>
           <Text style={styles.resultTitle}>
             {paid ? 'Payment received' : result.status === 'denied' ? 'Not verified' : 'Customer approval needed'}
           </Text>

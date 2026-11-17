@@ -17,6 +17,7 @@ import {
   Screen,
   StatusPill,
 } from '../components/ui';
+import { Pop, Pulse, Float } from '../components/motion';
 import { colors, spacing, type } from '../theme';
 import { showAlert } from '../lib/dialog';
 
@@ -91,15 +92,15 @@ export default function OrderDetailScreen({ navigation, route }: Props) {
 
   return (
     <Screen background={paid ? colors.accent : colors.bg}>
-      <Header title={paid ? '' : 'Payment request'} onBack={() => navigation.goBack()} />
+      <Header title={paid ? '' : 'Payment request'} onBack={() => navigation.goBack()} color={paid ? colors.black : undefined} />
       <ErrorBanner message={error} />
       {order && (
         <>
           {paid ? (
             <View style={styles.paid}>
-              <View style={styles.tick}>
+              <Pop style={styles.tick}>
                 <Text style={styles.tickText}>✓</Text>
-              </View>
+              </Pop>
               <Text style={styles.paidTitle}>Payment received</Text>
               <BigMoney amount={order.amount} color={colors.black} />
             </View>
@@ -109,16 +110,23 @@ export default function OrderDetailScreen({ navigation, route }: Props) {
               {order.note ? <Text style={styles.note}>{order.note}</Text> : null}
               {waiting ? (
                 <>
-                  <View style={styles.qrFrame}>
-                    <QRCode value={order.qrPayload} size={230} />
-                  </View>
+                  <Float amplitude={5} duration={3200}>
+                    <View style={styles.qrFrame}>
+                      <QRCode value={order.qrPayload} size={230} backgroundColor="#FFFFFF" color="#0F0F0F" />
+                    </View>
+                  </Float>
                   <Text style={styles.scan}>Ask the customer to scan with Vireo</Text>
+                  <View style={styles.waitRow}>
+                    <Pulse from={0.8} to={1.3} duration={900}>
+                      <View style={styles.dot} />
+                    </Pulse>
                   <Text style={styles.timer}>
                     Waiting for payment
                     {secondsLeft != null
                       ? ` · expires in ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`
                       : ''}
                   </Text>
+                  </View>
                 </>
               ) : (
                 <View style={{ marginTop: spacing.xl }}>
@@ -128,7 +136,7 @@ export default function OrderDetailScreen({ navigation, route }: Props) {
             </View>
           )}
 
-          <Card style={{ marginTop: spacing.xl, backgroundColor: paid ? 'rgba(255,255,255,0.35)' : colors.surface }}>
+          <Card style={{ marginTop: spacing.xl, backgroundColor: paid ? colors.black : colors.surface }}>
             <ListRow title="Reference" trailing={order.reference} />
             <ListRow title="Created" trailing={formatDateTime(order.createdAt)} />
             <ListRow title="Amount" trailing={formatMoney(order.amount, order.currency)} />
@@ -179,10 +187,12 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
     padding: spacing.xl,
     borderRadius: 28,
-    borderWidth: 2,
-    borderColor: colors.black,
-    backgroundColor: colors.white,
+    borderWidth: 3,
+    borderColor: colors.accent,
+    backgroundColor: '#FFFFFF',
   },
+  waitRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
+  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent },
   scan: { ...type.bodyStrong, marginTop: spacing.xl, color: colors.text },
   timer: { ...type.caption, marginTop: spacing.xs, color: colors.textMuted },
   paid: { alignItems: 'center', marginTop: spacing.xxl },
