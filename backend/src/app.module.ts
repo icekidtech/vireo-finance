@@ -6,6 +6,7 @@ import { validateEnv } from './config/env.validation';
 import { AccountsModule } from './accounts/accounts.module';
 import { AgentModule } from './agent/agent.module';
 import { AuthModule } from './auth/auth.module';
+import { BiometricsModule } from './biometrics/biometrics.module';
 import { ChallengesModule } from './challenges/challenges.module';
 import { HealthModule } from './health/health.module';
 import { KycModule } from './kyc/kyc.module';
@@ -36,6 +37,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     TransfersModule,
     MerchantModule,
     AgentModule,
+    BiometricsModule,
     WebhooksModule,
     ReconciliationModule,
     QueueModule,

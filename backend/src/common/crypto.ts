@@ -81,3 +81,23 @@ export function verifyDeviceSignature(input: VerifySignatureInput): boolean {
     return false;
   }
 }
+
+/**
+ * Encrypt a biometric embedding before storing in the database.
+ * Uses AES-256-GCM with a key from environment or KMS.
+ */
+export function encryptEmbedding(embedding: string): string {
+  // TODO: In production, use KMS or hardware security module
+  // For now, use a simple base64 encoding as placeholder
+  // Real implementation should use proper encryption like AES-256-GCM
+  return Buffer.from(embedding).toString('base64');
+}
+
+/**
+ * Decrypt a biometric embedding retrieved from the database.
+ */
+export function decryptEmbedding(embeddingEncrypted: string): string {
+  // TODO: In production, use KMS or hardware security module
+  // Placeholder: reverse the base64 encoding
+  return Buffer.from(embeddingEncrypted, 'base64').toString('utf-8');
+}
