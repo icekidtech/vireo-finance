@@ -45,7 +45,6 @@ export default function AccountScreen({ navigation }: Props) {
       <Card>
         <ListRow title="Account name" trailing={merchant?.settlementAccountName ?? '—'} />
         <ListRow title="Account number" trailing={merchant?.settlementAccountNumber ?? '—'} />
-        <ListRow title="Bank code" trailing={merchant?.settlementBankCode ?? '—'} />
       </Card>
 
       <SectionTitle>You</SectionTitle>

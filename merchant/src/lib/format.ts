@@ -50,10 +50,24 @@ export function initials(name: string | null | undefined): string {
 
 /** Extracts a human-readable message from an axios error or plain Error. */
 export function errorMessage(error: unknown, fallback = 'Something went wrong'): string {
-  const e = error as { response?: { data?: { message?: string | string[] } }; message?: string };
+  const e = error as {
+    response?: { status?: number; data?: { message?: string | string[] } };
+    message?: string;
+    code?: string;
+  };
+  // No response at all: the server could not be reached.
+  if (e && typeof e === 'object' && 'isAxiosError' in e && !e.response) {
+    return 'Could not connect. Check your internet connection and try again.';
+  }
+  // Server-side failures are never shown raw to the user.
+  if ((e?.response?.status ?? 0) >= 500) {
+    return typeof e.response?.data?.message === 'string'
+      ? e.response.data.message
+      : 'Something went wrong on our side. Please try again.';
+  }
   const message = e?.response?.data?.message;
   if (Array.isArray(message)) return message.join('. ');
-  return message || e?.message || fallback;
+  return message || fallback;
 }
 
 /** Groups the integer part of an in-progress keypad amount ("12500." -> "12,500."). */

@@ -19,14 +19,12 @@ export interface OnboardMerchantInput {
   handle: string;
   settlementBankCode?: string;
   settlementAccountNumber?: string;
-  settlementAccountName?: string;
 }
 
 export interface UpdateMerchantInput {
   businessName?: string;
   settlementBankCode?: string;
   settlementAccountNumber?: string;
-  settlementAccountName?: string;
 }
 
 export class VireoApi {
@@ -114,6 +112,20 @@ export class VireoApi {
 
   async getMerchantProfile() {
     const { data } = await this.client.get<Merchant>('/merchants/me');
+    return data;
+  }
+
+  async listBanks() {
+    const { data } = await this.client.get<{ code: string; name: string }[]>('/transfers/banks');
+    return data;
+  }
+
+  /** Server-side account name resolution; the name is never typed by the user. */
+  async lookupBankAccount(payload: { bankCode: string; accountNumber: string }) {
+    const { data } = await this.client.post<{ accountName: string; accountNumber: string; bankCode: string }>(
+      '/transfers/bank-lookup',
+      payload,
+    );
     return data;
   }
 

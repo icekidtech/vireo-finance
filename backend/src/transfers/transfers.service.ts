@@ -93,7 +93,7 @@ export class TransfersService {
     const validated = await this.paga.validateBankAccount({
       bankCode: dto.bankCode,
       accountNumber: dto.accountNumber,
-      amountMinor: parseAmountToMinor(dto.amount),
+      amountMinor: parseAmountToMinor(dto.amount ?? '1'),
       reference: `val_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
     });
     this.logger.log(`Bank account lookup by user=${userId} bank=${dto.bankCode}`);

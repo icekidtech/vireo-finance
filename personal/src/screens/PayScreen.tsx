@@ -44,6 +44,9 @@ export default function PayScreen({ navigation, route }: Props) {
   const [recipient, setRecipient] = useState('');
   const [banks, setBanks] = useState<Bank[]>([]);
   const [banksLoading, setBanksLoading] = useState(false);
+  // Bumped by "Retry"; the effect never re-runs on its own after a failure.
+  const [banksAttempt, setBanksAttempt] = useState(0);
+  const [banksFailed, setBanksFailed] = useState(false);
   const [bank, setBank] = useState<Bank | null>(null);
   const [accountName, setAccountName] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
@@ -95,16 +98,26 @@ export default function PayScreen({ navigation, route }: Props) {
     setIdempotencyKey(Crypto.randomUUID());
   }, []);
 
-  // Load Paga's supported banks the first time the bank form is needed.
+  // Load Paga's supported banks once when the bank form opens (retry is manual).
   useEffect(() => {
-    if (stage !== 'recipient' || kind !== 'bank' || banks.length || banksLoading) return;
+    if (stage !== 'recipient' || kind !== 'bank' || banks.length) return;
+    let cancelled = false;
     setBanksLoading(true);
+    setBanksFailed(false);
     api
       .listBanks()
-      .then(setBanks)
-      .catch((e) => setError(errorMessage(e, 'Could not load the list of banks')))
-      .finally(() => setBanksLoading(false));
-  }, [stage, kind, banks.length, banksLoading]);
+      .then((list) => !cancelled && setBanks(list))
+      .catch((e) => {
+        if (cancelled) return;
+        setBanksFailed(true);
+        setError(errorMessage(e, 'Could not load the list of banks'));
+      })
+      .finally(() => !cancelled && setBanksLoading(false));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, kind, banksAttempt]);
 
   // Resolve the account holder's name once bank + 10-digit account are set.
   useEffect(() => {
@@ -293,6 +306,9 @@ export default function PayScreen({ navigation, route }: Props) {
               keyboardType="number-pad"
               maxLength={10}
             />
+            {banksFailed && !banksLoading ? (
+              <Button title="Retry loading banks" variant="secondary" onPress={() => { setError(null); setBanksAttempt((n) => n + 1); }} />
+            ) : null}
             {resolving ? <Text style={styles.hint}>Verifying account…</Text> : null}
             {accountName ? (
               <Card>
@@ -334,7 +350,7 @@ export default function PayScreen({ navigation, route }: Props) {
             <>
               <QrScanner onScan={onScan} paused={loading} />
               <Text style={styles.hint}>Point your camera at the merchant’s payment QR code.</Text>
-              <Button title="Enter code manually" variant="ghost" onPress={() => setManual(true)} />
+              <Button title="Enter code manually" variant="secondary" onPress={() => setManual(true)} />
             </>
           ) : null}
           {!order && manual ? (
@@ -346,7 +362,7 @@ export default function PayScreen({ navigation, route }: Props) {
                 onChangeText={(v) => { setOrderInput(v); setOrder(null); }}
                 autoCapitalize="none"
               />
-              <Button title="Scan QR instead" variant="ghost" onPress={() => { setManual(false); setError(null); }} />
+              <Button title="Scan QR instead" variant="secondary" onPress={() => { setManual(false); setError(null); }} />
             </>
           ) : null}
           {order ? (

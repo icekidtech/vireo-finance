@@ -12,20 +12,16 @@ export class OnboardMerchantDto {
   @Matches(HANDLE_PATTERN, { message: 'handle must be 3-60 letters, numbers or underscores' })
   handle: string;
 
+  /** Paga bank id, as returned by GET /transfers/banks. */
   @IsOptional()
-  @IsString()
-  @Length(2, 16)
+  @IsUUID()
   settlementBankCode?: string;
 
+  /** The account holder's name is never accepted from the client: the server resolves it. */
   @IsOptional()
   @IsString()
-  @Length(6, 32)
+  @Matches(/^\d{10}$/, { message: 'settlementAccountNumber must be a 10-digit NUBAN' })
   settlementAccountNumber?: string;
-
-  @IsOptional()
-  @IsString()
-  @Length(2, 120)
-  settlementAccountName?: string;
 }
 
 export class CreateOrderDto {
@@ -72,18 +68,14 @@ export class UpdateMerchantDto {
   businessName?: string;
 
   /** Bank details change together or not at all, so a payout never mixes two accounts. */
+  /** Paga bank id, as returned by GET /transfers/banks. */
   @IsOptional()
-  @IsString()
-  @Length(2, 16)
+  @IsUUID()
   settlementBankCode?: string;
 
+  /** The account holder's name is never accepted from the client: the server resolves it. */
   @IsOptional()
   @IsString()
-  @Length(6, 32)
+  @Matches(/^\d{10}$/, { message: 'settlementAccountNumber must be a 10-digit NUBAN' })
   settlementAccountNumber?: string;
-
-  @IsOptional()
-  @IsString()
-  @Length(2, 120)
-  settlementAccountName?: string;
 }

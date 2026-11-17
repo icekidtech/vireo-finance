@@ -61,7 +61,9 @@ export class BankLookupDto {
   @Matches(/^\d{10}$/, { message: 'accountNumber must be a 10-digit NUBAN' })
   accountNumber: string;
 
+  /** Optional: only verifies the account; defaults to a nominal amount. */
+  @IsOptional()
   @IsString()
   @Matches(AMOUNT_PATTERN, { message: 'amount must be a positive decimal with up to 2 places' })
-  amount: string;
+  amount?: string;
 }

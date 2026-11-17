@@ -1,9 +1,10 @@
 import 'reflect-metadata';
 import { Logger, ValidationPipe } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { ServerErrorFilter } from './common/filters/server-error.filter';
 import { httpLogger } from './common/logging/http-logger.middleware';
 
 async function bootstrap() {
@@ -17,6 +18,7 @@ async function bootstrap() {
   // Base64 face/voice samples are far larger than Nest's 100kb default.
   app.useBodyParser('json', { limit: '8mb' });
   app.setGlobalPrefix('api/v1');
+  app.useGlobalFilters(new ServerErrorFilter(app.get(HttpAdapterHost).httpAdapter));
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

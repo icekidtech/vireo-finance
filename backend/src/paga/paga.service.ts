@@ -19,6 +19,8 @@ export type IncomingHeaders = Record<string, string | string[] | undefined>;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BANK_CACHE_MS = 24 * 60 * 60 * 1000;
+/** After a failed fetch, don't hit Paga again for this long (avoids 429 storms). */
+const BANK_FAILURE_COOLDOWN_MS = 30 * 1000;
 
 class PagaApiError extends Error {
   constructor(
@@ -34,6 +36,8 @@ class PagaApiError extends Error {
 export class PagaService {
   private readonly logger = new Logger(PagaService.name);
   private bankCache: { fetchedAt: number; banks: PagaBank[] } | null = null;
+  private bankInflight: Promise<PagaBank[]> | null = null;
+  private bankFailure: { at: number; error: unknown } | null = null;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -318,7 +322,29 @@ export class PagaService {
     if (this.bankCache && Date.now() - this.bankCache.fetchedAt < BANK_CACHE_MS) {
       return this.bankCache.banks;
     }
+    // Replay a recent failure instead of calling Paga again.
+    if (this.bankFailure && Date.now() - this.bankFailure.at < BANK_FAILURE_COOLDOWN_MS) {
+      throw this.bankFailure.error;
+    }
+    // Concurrent callers share one upstream request.
+    if (!this.bankInflight) {
+      this.bankInflight = this.fetchBanks()
+        .then((banks) => {
+          this.bankFailure = null;
+          return banks;
+        })
+        .catch((error) => {
+          this.bankFailure = { at: Date.now(), error };
+          throw error;
+        })
+        .finally(() => {
+          this.bankInflight = null;
+        });
+    }
+    return this.bankInflight;
+  }
 
+  private async fetchBanks(): Promise<PagaBank[]> {
     const reference = newReference('banks');
     const raw = await this.collect('banks', { referenceNumber: reference }, [reference]);
     const banks = Array.isArray(raw.banks)

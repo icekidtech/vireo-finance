@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import { errorMessage } from '../lib/format';
 import { AuthLayout, Button, ErrorBanner, Field, Screen } from '../components/ui';
+import BankAccountFields, { type BankAccountValue } from '../components/BankAccountFields';
 import { colors, spacing, type } from '../theme';
 
 type Stage = 'welcome' | 'account' | 'otp' | 'business';
@@ -23,9 +24,7 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
   const [token, setToken] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [handle, setHandle] = useState('');
-  const [bankCode, setBankCode] = useState('');
-  const [accountNumber, setAccountNumber] = useState('');
-  const [accountName, setAccountName] = useState('');
+  const [bankAccount, setBankAccount] = useState<BankAccountValue | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,9 +82,10 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
       await api.onboardMerchant({
         businessName: businessName.trim(),
         handle: handle.trim(),
-        settlementBankCode: bankCode.trim() || undefined,
-        settlementAccountNumber: accountNumber.trim() || undefined,
-        settlementAccountName: accountName.trim() || undefined,
+        // Optional: when given, the server verifies it and fills in the name.
+        ...(bankAccount?.verified
+          ? { settlementBankCode: bankAccount.bankCode!, settlementAccountNumber: bankAccount.accountNumber }
+          : {}),
       });
       login(token, await api.getProfile());
     }, 'Could not set up your business');
@@ -163,10 +163,8 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
               <Field label="BUSINESS NAME" value={businessName} onChangeText={setBusinessName} placeholder="Ada's Kitchen" />
               <Field label="HANDLE" value={handle} onChangeText={setHandle} autoCapitalize="none" placeholder="adas_kitchen" hint="3–60 letters, numbers or underscores. Customers can find you by this." />
               <Text style={styles.section}>Where should we send your money?</Text>
-              <Field label="BANK CODE" value={bankCode} onChangeText={setBankCode} autoCapitalize="none" placeholder="058" />
-              <Field label="ACCOUNT NUMBER" value={accountNumber} onChangeText={setAccountNumber} keyboardType="number-pad" placeholder="0123456789" />
-              <Field label="ACCOUNT NAME" value={accountName} onChangeText={setAccountName} />
-              <Button title="Finish" variant="accent" loading={loading} disabled={!businessName.trim() || !handle.trim()} onPress={onOnboard} />
+              <BankAccountFields onChange={setBankAccount} />
+              <Button title="Finish" variant="accent" loading={loading} disabled={!businessName.trim() || !handle.trim() || (!!bankAccount && (bankAccount.bankCode !== null || bankAccount.accountNumber !== '') && !bankAccount.verified)} onPress={onOnboard} />
             </>
           )}
     </AuthLayout>

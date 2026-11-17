@@ -63,6 +63,11 @@ export class MerchantService {
       throw new ConflictException('This account already has a merchant profile');
     }
 
+    const bank = await this.resolveSettlementBank(
+      dto.settlementBankCode,
+      dto.settlementAccountNumber,
+    );
+
     const merchant = await this.dataSource.transaction(async (manager) => {
       const saved = await manager.getRepository(Merchant).save(
         manager.getRepository(Merchant).create({
@@ -70,9 +75,9 @@ export class MerchantService {
           handle,
           businessName: dto.businessName.trim(),
           kybStatus: 'pending',
-          settlementBankCode: dto.settlementBankCode ?? null,
-          settlementAccountNumber: dto.settlementAccountNumber ?? null,
-          settlementAccountName: dto.settlementAccountName ?? null,
+          settlementBankCode: bank?.bankCode ?? null,
+          settlementAccountNumber: bank?.accountNumber ?? null,
+          settlementAccountName: bank?.accountName ?? null,
           status: 'active',
         }),
       );
@@ -82,6 +87,25 @@ export class MerchantService {
     });
 
     return presentMerchant(merchant);
+  }
+
+  /**
+   * Verifies a payout account with the bank and returns the holder's name.
+   * Both fields or neither; a failed verification rejects rather than saving
+   * an unverified destination.
+   */
+  private async resolveSettlementBank(bankCode?: string, accountNumber?: string) {
+    if (!bankCode && !accountNumber) return null;
+    if (!bankCode || !accountNumber) {
+      throw new BadRequestException('Select a bank and enter the account number together');
+    }
+    const result = await this.paga.validateBankAccount({
+      bankCode,
+      accountNumber,
+      amountMinor: 100n,
+      reference: `val_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
+    });
+    return { bankCode: result.bankUuid, accountNumber, accountName: result.accountName };
   }
 
   async getByOwner(userId: string): Promise<Merchant> {
@@ -104,16 +128,12 @@ export class MerchantService {
    */
   async updateProfile(userId: string, dto: UpdateMerchantDto) {
     const merchant = await this.getByOwner(userId);
-    const bankFields = [
-      dto.settlementBankCode,
-      dto.settlementAccountNumber,
-      dto.settlementAccountName,
-    ];
+    const bankFields = [dto.settlementBankCode, dto.settlementAccountNumber];
     const bankProvided = bankFields.filter((v) => v !== undefined).length;
 
     if (bankProvided > 0 && bankProvided < bankFields.length) {
       throw new BadRequestException(
-        'settlementBankCode, settlementAccountNumber and settlementAccountName must be provided together',
+        'settlementBankCode and settlementAccountNumber must be provided together',
       );
     }
     if (dto.businessName === undefined && bankProvided === 0) {
@@ -134,9 +154,14 @@ export class MerchantService {
       if (inFlight > 0) {
         throw new ConflictException('Bank details cannot change while a settlement is in progress');
       }
-      merchant.settlementBankCode = dto.settlementBankCode!.trim();
-      merchant.settlementAccountNumber = dto.settlementAccountNumber!.trim();
-      merchant.settlementAccountName = dto.settlementAccountName!.trim();
+      // The holder's name comes from the bank, never from the client.
+      const bank = await this.resolveSettlementBank(
+        dto.settlementBankCode,
+        dto.settlementAccountNumber,
+      );
+      merchant.settlementBankCode = bank!.bankCode;
+      merchant.settlementAccountNumber = bank!.accountNumber;
+      merchant.settlementAccountName = bank!.accountName;
     }
     if (dto.businessName !== undefined) {
       merchant.businessName = dto.businessName.trim();

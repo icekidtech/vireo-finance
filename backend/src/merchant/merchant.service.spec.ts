@@ -105,11 +105,14 @@ function makeService(opts: HarnessOptions = {}) {
     if (opts.issueError) throw opts.issueError;
     return challenge;
   });
-  const depositToBank = jest.fn(async () => opts.pagaResult ?? {
-    status: 'completed',
-    providerReference: 'paga-ref',
-    raw: {},
-  });
+  const depositToBank = jest.fn(
+    async () =>
+      opts.pagaResult ?? {
+        status: 'completed',
+        providerReference: 'paga-ref',
+        raw: {},
+      },
+  );
 
   // A single fake manager shared by every runInTransaction call. Settlement
   // saves assign an id so the draft path mirrors the database generating one.
@@ -213,9 +216,9 @@ function makeService(opts: HarnessOptions = {}) {
 describe('MerchantService.createSettlementDraft', () => {
   it('rejects settlement when merchant KYB is not verified', async () => {
     const { service, spies } = makeService({ merchant: makeMerchant({ kybStatus: 'pending' }) });
-    await expect(
-      service.createSettlementDraft('user-1', { deviceId: 'device-1' }),
-    ).rejects.toThrow('Merchant KYB must be verified before settling');
+    await expect(service.createSettlementDraft('user-1', { deviceId: 'device-1' })).rejects.toThrow(
+      'Merchant KYB must be verified before settling',
+    );
     expect(spies.createHold).not.toHaveBeenCalled();
   });
 
@@ -228,9 +231,9 @@ describe('MerchantService.createSettlementDraft', () => {
 
   it('rejects when settlement bank details are missing', async () => {
     const { service } = makeService({ merchant: makeMerchant({ settlementBankCode: null }) });
-    await expect(
-      service.createSettlementDraft('user-1', { deviceId: 'device-1' }),
-    ).rejects.toThrow(BadRequestException);
+    await expect(service.createSettlementDraft('user-1', { deviceId: 'device-1' })).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   it('creates a DRAFT settlement, reserves a hold and issues a settlement challenge', async () => {
@@ -244,7 +247,11 @@ describe('MerchantService.createSettlementDraft', () => {
     expect(result.challenge.type).toBe(ChallengeType.SETTLEMENT);
     expect(spies.createHold).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ accountId: 'acc-m', amount: 50000n, reference: `settlement:${settlement.id}` }),
+      expect.objectContaining({
+        accountId: 'acc-m',
+        amount: 50000n,
+        reference: `settlement:${settlement.id}`,
+      }),
     );
     expect(spies.issue).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -270,9 +277,9 @@ describe('MerchantService.createSettlementDraft', () => {
     const { service, settlement, spies } = makeService({
       issueError: new BadRequestException('Device is not registered or has been revoked'),
     });
-    await expect(
-      service.createSettlementDraft('user-1', { deviceId: 'device-1' }),
-    ).rejects.toThrow(BadRequestException);
+    await expect(service.createSettlementDraft('user-1', { deviceId: 'device-1' })).rejects.toThrow(
+      BadRequestException,
+    );
     expect(settlement.status).toBe(SettlementStatus.FAILED);
     expect(spies.releaseHold).toHaveBeenCalled();
   });
@@ -297,7 +304,9 @@ describe('MerchantService.submitSettlement', () => {
   });
 
   it('rejects a failed settlement', async () => {
-    const { service } = makeService({ settlement: makeSettlement({ status: SettlementStatus.FAILED }) });
+    const { service } = makeService({
+      settlement: makeSettlement({ status: SettlementStatus.FAILED }),
+    });
     await expect(service.submitSettlement('user-1', 'settle-1', 'sig')).rejects.toThrow(
       BadRequestException,
     );
@@ -309,7 +318,11 @@ describe('MerchantService.submitSettlement', () => {
 
     expect(spies.consume).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ challengeId: 'challenge-1', userId: 'user-1', type: ChallengeType.SETTLEMENT }),
+      expect.objectContaining({
+        challengeId: 'challenge-1',
+        userId: 'user-1',
+        type: ChallengeType.SETTLEMENT,
+      }),
     );
     expect(spies.depositToBank).toHaveBeenCalledWith(
       expect.objectContaining({ amountMinor: 50000n, reference: 'settlement:settle-1' }),
@@ -333,7 +346,12 @@ describe('MerchantService.submitSettlement', () => {
 
   it('fails the settlement and releases the hold when Paga rejects the payout', async () => {
     const { service, settlement, spies } = makeService({
-      pagaResult: { status: 'failed', providerReference: 'paga-ref', failureReason: 'no funds', raw: {} },
+      pagaResult: {
+        status: 'failed',
+        providerReference: 'paga-ref',
+        failureReason: 'no funds',
+        raw: {},
+      },
     });
     const result = await service.submitSettlement('user-1', 'settle-1', 'sig');
     expect(result.status).toBe(SettlementStatus.FAILED);
@@ -348,7 +366,13 @@ describe('MerchantService.consumeForSettlement binding', () => {
     const { service } = makeService({
       challenge: makeChallenge({ payload: { settlementId: 'other', amountMinor: '50000' } }),
     });
-    const manager = { getRepository: jest.fn(() => ({ findOne: jest.fn(async () => makeChallenge({ payload: { settlementId: 'other', amountMinor: '50000' } })) })) };
+    const manager = {
+      getRepository: jest.fn(() => ({
+        findOne: jest.fn(async () =>
+          makeChallenge({ payload: { settlementId: 'other', amountMinor: '50000' } }),
+        ),
+      })),
+    };
     await expect(
       service['consumeForSettlement'](manager as any, makeSettlement() as any, 'user-1', 'sig'),
     ).rejects.toThrow('Challenge is not bound to this settlement');
@@ -356,7 +380,13 @@ describe('MerchantService.consumeForSettlement binding', () => {
 
   it('rejects a challenge whose amount does not match the settlement', async () => {
     const { service } = makeService();
-    const manager = { getRepository: jest.fn(() => ({ findOne: jest.fn(async () => makeChallenge({ payload: { settlementId: 'settle-1', amountMinor: '999' } })) })) };
+    const manager = {
+      getRepository: jest.fn(() => ({
+        findOne: jest.fn(async () =>
+          makeChallenge({ payload: { settlementId: 'settle-1', amountMinor: '999' } }),
+        ),
+      })),
+    };
     await expect(
       service['consumeForSettlement'](manager as any, makeSettlement() as any, 'user-1', 'sig'),
     ).rejects.toThrow('Challenge amount does not match the settlement');
@@ -364,11 +394,17 @@ describe('MerchantService.consumeForSettlement binding', () => {
 
   it('consumes a correctly bound challenge', async () => {
     const { service, spies } = makeService();
-    const manager = { getRepository: jest.fn(() => ({ findOne: jest.fn(async () => makeChallenge()) })) };
+    const manager = {
+      getRepository: jest.fn(() => ({ findOne: jest.fn(async () => makeChallenge()) })),
+    };
     await service['consumeForSettlement'](manager as any, makeSettlement() as any, 'user-1', 'sig');
     expect(spies.consume).toHaveBeenCalledWith(
       manager,
-      expect.objectContaining({ challengeId: 'challenge-1', type: ChallengeType.SETTLEMENT, signature: 'sig' }),
+      expect.objectContaining({
+        challengeId: 'challenge-1',
+        type: ChallengeType.SETTLEMENT,
+        signature: 'sig',
+      }),
     );
   });
 });
@@ -389,7 +425,9 @@ describe('MerchantService.cancelOrder', () => {
   });
 
   it('is idempotent for an already cancelled order', async () => {
-    const { service } = makeService({ order: makeOrder({ status: MerchantOrderStatus.CANCELLED }) });
+    const { service } = makeService({
+      order: makeOrder({ status: MerchantOrderStatus.CANCELLED }),
+    });
     const result = await service.cancelOrder('user-1', 'ord_abc');
     expect(result.status).toBe(MerchantOrderStatus.CANCELLED);
   });

@@ -20,6 +20,14 @@ function setup(inFlight = 0) {
     save: jest.fn(async (m: any) => m),
   };
   const settlements = { count: jest.fn(async () => inFlight) };
+  const paga = {
+    validateBankAccount: jest.fn(async (i: any) => ({
+      accountName: 'RESOLVED NAME',
+      bankCode: i.bankCode,
+      accountNumber: i.accountNumber,
+      bankUuid: i.bankCode,
+    })),
+  };
   const service = new MerchantService(
     {} as any,
     merchants as any,
@@ -28,24 +36,33 @@ function setup(inFlight = 0) {
     {} as any,
     {} as any,
     {} as any,
-    {} as any,
+    paga as any,
   );
-  return { service, merchant, merchants, settlements };
+  return { service, merchant, merchants, settlements, paga };
 }
 
+const BANK_UUID = '11111111-1111-4111-8111-111111111111';
 const bank = {
-  settlementBankCode: '044',
+  settlementBankCode: BANK_UUID,
   settlementAccountNumber: '9876543210',
-  settlementAccountName: 'New Name',
 };
 
 describe('MerchantService.updateProfile', () => {
   it('updates the bank details as a complete set', async () => {
     const { service, merchants } = setup();
     const result = await service.updateProfile('user-1', bank);
-    expect(result.settlementBankCode).toBe('044');
+    expect(result.settlementBankCode).toBe(BANK_UUID);
     expect(result.settlementAccountNumber).toBe('9876543210');
+    // The name is whatever the bank says, never client-supplied.
+    expect(result.settlementAccountName).toBe('RESOLVED NAME');
     expect(merchants.save).toHaveBeenCalled();
+  });
+
+  it('saves nothing when the bank cannot verify the account', async () => {
+    const { service, merchants, paga } = setup();
+    paga.validateBankAccount.mockRejectedValueOnce(new BadRequestException('Could not validate'));
+    await expect(service.updateProfile('user-1', bank)).rejects.toThrow(BadRequestException);
+    expect(merchants.save).not.toHaveBeenCalled();
   });
 
   it('rejects a partial set of bank fields', async () => {
