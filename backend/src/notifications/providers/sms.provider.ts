@@ -46,12 +46,11 @@ export class SmsNotificationProvider implements NotificationProvider {
     }
   }
 
-  private async sendSms(phone: string, message: string): Promise<void> {
-    if (!this.gatewayUrl || !this.apiKey) {
-      throw new Error('SMS gateway not configured');
-    }
-    // Integrate with a real SMS gateway here (e.g. Africa's Talking, Twilio).
-    // Placeholder: log the outbound message.
-    this.logger.log(`sms to=${phone} from=${this.senderId ?? 'Vireo'} body="${message}"`);
+  /**
+   * No SMS gateway adapter exists yet. Enabling SMS therefore fails loudly
+   * instead of logging a message that was never delivered.
+   */
+  private async sendSms(_phone: string, _message: string): Promise<void> {
+    throw new Error('SMS delivery is not available: no gateway adapter is implemented');
   }
 }

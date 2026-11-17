@@ -10,7 +10,13 @@ import { PhoneOtp } from './phone-otp.entity';
 import { AccountsService } from '../accounts/accounts.service';
 import { PagaService } from '../paga/paga.service';
 import { hmacSha256Hex } from '../common/crypto';
-import { DevicePlatform, DeviceStatus, SignatureAlgorithm, UserRole, UserStatus } from '../common/enums';
+import {
+  DevicePlatform,
+  DeviceStatus,
+  SignatureAlgorithm,
+  UserRole,
+  UserStatus,
+} from '../common/enums';
 
 const mockUser: User = {
   id: 'user-1',
@@ -146,14 +152,24 @@ describe('AuthService', () => {
   });
 
   describe('requestOtp', () => {
-    it('returns dev code in non-production', async () => {
+    it('never returns the code unless OTP echo is explicitly enabled', async () => {
       usersRepo.findOne.mockResolvedValue(mockUser);
       otpsRepo.findOne.mockResolvedValue(null);
 
       const result = await service.requestOtp('+2348012345678');
 
       expect(result.expiresIn).toBe(300);
-      expect(result.devCode).toBeDefined();
+      expect(result.devCode).toBeUndefined();
+    });
+
+    it('returns the code only when OTP echo is enabled for local development', async () => {
+      usersRepo.findOne.mockResolvedValue(mockUser);
+      otpsRepo.findOne.mockResolvedValue(null);
+      const base = configService.get;
+      configService.get = jest.fn((key: string) => (key === 'otp.echoCode' ? true : base(key)));
+
+      const result = await service.requestOtp('+2348012345678');
+
       expect(result.devCode).toHaveLength(6);
     });
 

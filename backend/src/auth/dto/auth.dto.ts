@@ -45,8 +45,4 @@ export class RegisterDeviceDto {
   @IsOptional()
   @IsEnum(SignatureAlgorithm)
   algorithm?: SignatureAlgorithm;
-
-  @IsOptional()
-  @IsString()
-  attestationToken?: string;
 }

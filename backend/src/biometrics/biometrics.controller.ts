@@ -16,7 +16,6 @@ import {
   GrantConsentDto,
   RevokeBiometricDto,
 } from './dto/enroll-biometric.dto';
-import { AttemptContext } from './biometric-attempt.entity';
 
 @Controller('biometrics')
 export class BiometricsController {

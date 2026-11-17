@@ -16,6 +16,8 @@ export interface AppConfig {
   };
   otp: {
     ttlSeconds: number;
+    /** Return the OTP in the API response. Local development only; off by default. */
+    echoCode: boolean;
   };
   challenge: {
     ttlSeconds: number;
@@ -45,6 +47,12 @@ export interface AppConfig {
   openai: {
     apiKey: string;
     model: string;
+  };
+  biometrics: {
+    /** Name of the configured biometric vendor adapter; empty means biometrics are disabled. */
+    provider: string;
+    /** Base64 AES-256 key that encrypts stored biometric templates. */
+    encryptionKey: string;
   };
   notifications: {
     sms?: {
@@ -82,11 +90,12 @@ export default (): AppConfig => ({
     ssl: bool(process.env.DB_SSL, false),
   },
   jwt: {
-    secret: process.env.JWT_SECRET ?? 'dev-only-change-me',
+    secret: process.env.JWT_SECRET ?? '',
     expiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
   },
   otp: {
     ttlSeconds: int(process.env.OTP_TTL_SECONDS, 300),
+    echoCode: bool(process.env.OTP_ECHO_CODE, false),
   },
   challenge: {
     ttlSeconds: int(process.env.CHALLENGE_TTL_SECONDS, 120),
@@ -119,6 +128,10 @@ export default (): AppConfig => ({
     newPayeeLimit: BigInt(process.env.RISK_NEW_PAYEE_LIMIT ?? '5000000'),
     velocityCount: int(process.env.RISK_VELOCITY_COUNT, 10),
     velocityWindowMinutes: int(process.env.RISK_VELOCITY_WINDOW_MINUTES, 10),
+  },
+  biometrics: {
+    provider: (process.env.BIOMETRIC_PROVIDER ?? '').trim().toLowerCase(),
+    encryptionKey: process.env.BIOMETRIC_ENCRYPTION_KEY ?? '',
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY ?? '',

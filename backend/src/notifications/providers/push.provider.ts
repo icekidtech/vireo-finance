@@ -40,15 +40,16 @@ export class PushNotificationProvider implements NotificationProvider {
     }
   }
 
+  /**
+   * No FCM/APNs adapter exists yet. Enabling push therefore fails loudly
+   * instead of logging a notification that was never delivered.
+   */
   private async sendPush(
-    deviceToken: string,
-    title: string,
-    body: string,
-    data?: Record<string, unknown>,
+    _deviceToken: string,
+    _title: string,
+    _body: string,
+    _data?: Record<string, unknown>,
   ): Promise<void> {
-    // Integrate with FCM/APNs here. Placeholder: log the outbound push.
-    this.logger.log(
-      `push to=${deviceToken} title="${title}" body="${body}" ${data ? `data=${JSON.stringify(data)}` : ''}`,
-    );
+    throw new Error('Push delivery is not available: no FCM/APNs adapter is implemented');
   }
 }

@@ -91,10 +91,11 @@ export class AuthService {
       }),
     );
 
-    const isProduction = this.config.get<string>('env') === 'production';
+    // The code is echoed only when explicitly enabled for local development
+    // (OTP_ECHO_CODE); startup validation forbids it in production.
     return {
       expiresIn: ttl,
-      ...(isProduction ? {} : { devCode: code }),
+      ...(this.config.get<boolean>('otp.echoCode') ? { devCode: code } : {}),
     };
   }
 
@@ -134,7 +135,8 @@ export class AuthService {
         publicKey: dto.publicKey,
         platform: dto.platform,
         algorithm: dto.algorithm ?? SignatureAlgorithm.ED25519,
-        attestationState: dto.attestationToken ? 'provided' : 'unverified',
+        // No attestation verifier exists yet, so the state is never anything but unverified.
+        attestationState: 'unverified',
         status: DeviceStatus.ACTIVE,
       }),
     );
@@ -173,7 +175,10 @@ export class AuthService {
   }
 
   private hashOtp(phone: string, code: string): string {
-    const secret = this.config.get<string>('jwt.secret') ?? 'dev-only-change-me';
+    const secret = this.config.get<string>('jwt.secret');
+    if (!secret) {
+      throw new Error('JWT secret is not configured');
+    }
     return hmacSha256Hex(secret, `${phone}:${code}`);
   }
 

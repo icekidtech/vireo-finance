@@ -89,12 +89,11 @@ export class VireoApi {
     return data;
   }
 
-  async registerDevice(publicKey: string, platform: string, algorithm?: string, attestationToken?: string) {
+  async registerDevice(publicKey: string, platform: string, algorithm?: string) {
     const { data } = await this.client.post<Device>('/auth/devices', {
       publicKey,
       platform,
       algorithm,
-      attestationToken,
     });
     return data;
   }

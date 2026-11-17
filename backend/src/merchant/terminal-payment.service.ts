@@ -30,7 +30,7 @@ const DENIED_MESSAGE = 'Biometric verification failed';
  *  - only a KYB-verified merchant can accept it, and only for its own open orders;
  *  - the amount comes from the order, never from the request;
  *  - the biometric decision (approve / deny / step-up) comes from the verifier,
- *    which is itself fail-closed in production while only the mock scorer exists;
+ *    which fails closed unless a real vendor adapter is configured;
  *  - when two biometrics are sent, both must approve the SAME customer;
  *  - denials never reveal whether the customer exists or is enrolled;
  *  - a step-up (high value or uncertain match) is NOT completed here: there is

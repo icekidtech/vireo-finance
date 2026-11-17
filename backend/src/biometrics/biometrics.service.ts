@@ -1,15 +1,14 @@
 import {
+  Inject,
   Injectable,
   Logger,
   BadRequestException,
   NotFoundException,
   ForbiddenException,
-  NotImplementedException,
   ServiceUnavailableException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource, EntityManager, MoreThan } from 'typeorm';
+import { Repository, DataSource, MoreThan } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { BiometricEnrollment, BiometricType, BiometricStatus } from './biometric-enrollment.entity';
 import { BiometricConsent, ConsentStatus, ConsentPurpose } from './biometric-consent.entity';
@@ -21,7 +20,8 @@ import {
   GrantConsentDto,
   RevokeBiometricDto,
 } from './dto/enroll-biometric.dto';
-import { encryptEmbedding, decryptEmbedding } from '../common/crypto';
+import { encryptEmbedding, decryptEmbedding, parseEncryptionKey } from '../common/crypto';
+import { BIOMETRIC_PROVIDER, BiometricProvider } from './biometric-provider';
 
 interface BiometricScores {
   matchScore: number;
@@ -53,7 +53,13 @@ export class BiometricsService {
     private readonly attempts: Repository<BiometricAttempt>,
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly config: ConfigService,
-  ) {}
+    @Inject(BIOMETRIC_PROVIDER) private readonly provider: BiometricProvider | null,
+  ) {
+    const key = this.config.get<string>('biometrics.encryptionKey');
+    this.encryptionKey = key ? parseEncryptionKey(key) : null;
+  }
+
+  private readonly encryptionKey: Buffer | null;
 
   /**
    * Grant explicit consent for biometric data collection.
@@ -116,7 +122,7 @@ export class BiometricsService {
    * Enroll a new biometric (face or voice).
    */
   async enroll(userId: string, dto: EnrollBiometricDto): Promise<BiometricEnrollment> {
-    this.assertProviderReady();
+    this.assertReady();
     // Verify consent exists and is active
     const consent = await this.consents.findOne({
       where: { id: dto.consentId, userId, status: ConsentStatus.GRANTED },
@@ -125,8 +131,10 @@ export class BiometricsService {
       throw new ForbiddenException('Valid consent is required before enrolling biometrics');
     }
 
-    // Process the biometric sample into an embedding
-    const { embedding, qualityScore } = await this.processEnrollment(dto.type, dto.sampleBase64);
+    const { template, qualityScore } = await this.requireProvider().enroll(
+      dto.type,
+      dto.sampleBase64,
+    );
 
     if (qualityScore < this.getMinQualityScore()) {
       throw new BadRequestException(
@@ -134,8 +142,8 @@ export class BiometricsService {
       );
     }
 
-    // Encrypt the embedding before storing
-    const embeddingEncrypted = encryptEmbedding(embedding);
+    // Encrypt the template (AES-256-GCM, bound to this user) before storing
+    const embeddingEncrypted = encryptEmbedding(template, this.requireKey(), userId);
 
     // Revoke existing enrollments of this type (users can re-enroll)
     await this.enrollments.update(
@@ -150,7 +158,7 @@ export class BiometricsService {
         status: BiometricStatus.ACTIVE,
         embeddingEncrypted,
         consentId: dto.consentId,
-        modelVersion: this.getCurrentModelVersion(),
+        modelVersion: this.requireProvider().name,
         qualityScore,
         metadata: dto.metadata ?? null,
       }),
@@ -165,12 +173,12 @@ export class BiometricsService {
    * Returns a decision: approved, denied, or step_up.
    */
   async verify(dto: VerifyBiometricDto, context: AttemptContext): Promise<FusionResult> {
-    this.assertProviderReady();
+    this.assertReady();
     // Look up user by identifier (phone or handle)
     const user = await this.findUserByIdentifier(dto.identifier);
     if (!user) {
-      // For security, always perform a fake verification to prevent timing attacks
-      await this.fakeVerification();
+      // Same response as any other denial; pad the latency so existence is not leaked by speed.
+      await this.padUnknownIdentifierLatency();
       return this.logAttempt(null, dto.type, AttemptResult.DENIED, context, {
         matchScore: 0,
         livenessScore: 0,
@@ -221,12 +229,46 @@ export class BiometricsService {
       };
     }
 
-    // Process the verification sample
-    const verificationResult = await this.processVerification(
+    // Decrypt each stored template, bound to its owner. A template that cannot
+    // be decrypted (wrong key, tampering, legacy format) is never matched against.
+    const usable: { id: string; template: string }[] = [];
+    for (const enrollment of enrollments) {
+      try {
+        usable.push({
+          id: enrollment.id,
+          template: decryptEmbedding(enrollment.embeddingEncrypted, this.requireKey(), user.id),
+        });
+      } catch {
+        this.logger.warn(`Skipping unreadable biometric template ${enrollment.id}`);
+      }
+    }
+    if (usable.length === 0) {
+      return {
+        ...(await this.logAttempt(user.id, dto.type, AttemptResult.DENIED, context, {
+          matchScore: 0,
+          livenessScore: 0,
+          spoofScore: 0,
+          qualityScore: 0,
+        })),
+        userId: user.id,
+      };
+    }
+
+    const result = await this.requireProvider().verify(
       dto.type,
       dto.sampleBase64,
-      enrollments,
+      usable.map((u) => u.template),
     );
+    const verificationResult = {
+      matchScore: result.matchScore,
+      livenessScore: result.livenessScore,
+      spoofScore: result.spoofScore,
+      qualityScore: result.qualityScore,
+      matchedEnrollmentId:
+        result.matchedTemplateIndex !== undefined
+          ? usable[result.matchedTemplateIndex]?.id
+          : undefined,
+    };
 
     // Apply score fusion to make a decision
     const fusionResult = this.scoreFusion(verificationResult, dto.amountMinor);
@@ -278,65 +320,6 @@ export class BiometricsService {
 
   // ===== Private Helper Methods =====
 
-  private async processEnrollment(
-    type: BiometricType,
-    sampleBase64: string,
-  ): Promise<{ embedding: string; qualityScore: number }> {
-    // TODO: Integrate with actual biometric vendor SDK or ML model
-    // For now, this is a placeholder that simulates processing
-
-    if (type === BiometricType.FACE) {
-      // In production: call face recognition service
-      // - Detect face in image
-      // - Extract face embedding (512-d or 128-d vector)
-      // - Check liveness
-      // - Return quality score
-      this.logger.debug('Processing face enrollment (placeholder)');
-      return {
-        embedding: this.mockFaceEmbedding(sampleBase64),
-        qualityScore: 85,
-      };
-    }
-
-    if (type === BiometricType.VOICE) {
-      // In production: call voice recognition service
-      // - Extract voice features
-      // - Generate speaker embedding (i-vector or x-vector)
-      // - Check audio quality
-      // - Return quality score
-      this.logger.debug('Processing voice enrollment (placeholder)');
-      return {
-        embedding: this.mockVoiceEmbedding(sampleBase64),
-        qualityScore: 80,
-      };
-    }
-
-    throw new BadRequestException('Unsupported biometric type');
-  }
-
-  private async processVerification(
-    type: BiometricType,
-    sampleBase64: string,
-    enrollments: BiometricEnrollment[],
-  ): Promise<{
-    matchScore: number;
-    livenessScore: number;
-    spoofScore: number;
-    qualityScore: number;
-    matchedEnrollmentId?: string;
-  }> {
-    // TODO: Integrate with actual biometric verification
-    // - Extract embedding from sample
-    // - Compare against each enrollment embedding
-    // - Return best match score, liveness, spoof, and quality
-
-    this.logger.debug(`Processing ${type} verification against ${enrollments.length} enrollments`);
-
-    // Placeholder: simulate verification
-    const mockScores = this.mockVerification(type, sampleBase64, enrollments);
-    return mockScores;
-  }
-
   private scoreFusion(
     verification: {
       matchScore: number;
@@ -347,7 +330,7 @@ export class BiometricsService {
     },
     amountMinor?: number,
   ): FusionResult {
-    const thresholds = this.getThresholds(amountMinor);
+    const thresholds = this.getThresholds();
 
     // Deny if spoof score is too high
     if (verification.spoofScore > thresholds.maxSpoofScore) {
@@ -425,20 +408,27 @@ export class BiometricsService {
   }
 
   /**
-   * The mock provider returns passing scores for any sample, so it must never
-   * back real money movement. Outside production it is allowed for development.
+   * Biometrics only run against a configured vendor adapter. With none
+   * configured every biometric operation fails closed.
    */
-  private assertProviderReady(): void {
-    const provider = (process.env.BIOMETRIC_PROVIDER ?? 'mock').toLowerCase();
-    if (provider === 'mock') {
-      if (process.env.NODE_ENV === 'production') {
-        throw new ServiceUnavailableException('Biometric verification is not available');
-      }
-      return;
+  /** Both a vendor adapter and the template-encryption key must exist, checked before any work. */
+  private assertReady(): void {
+    this.requireProvider();
+    this.requireKey();
+  }
+
+  private requireProvider(): BiometricProvider {
+    if (!this.provider) {
+      throw new ServiceUnavailableException('Biometric verification is not available');
     }
-    // No adapter exists for any other provider yet: fail closed rather than
-    // silently falling back to the mock scorer.
-    throw new NotImplementedException(`Biometric provider "${provider}" is not implemented`);
+    return this.provider;
+  }
+
+  private requireKey(): Buffer {
+    if (!this.encryptionKey) {
+      throw new ServiceUnavailableException('Biometric verification is not available');
+    }
+    return this.encryptionKey;
   }
 
   private async isLockedOut(userId: string): Promise<boolean> {
@@ -472,7 +462,7 @@ export class BiometricsService {
     return !!consent;
   }
 
-  private getThresholds(amountMinor?: number) {
+  private getThresholds() {
     // Using environment variables directly until config type is updated
     const minMatchScore = parseInt(process.env.BIOMETRIC_MIN_MATCH_SCORE ?? '75', 10);
     const stepUpMatchScore = parseInt(process.env.BIOMETRIC_STEP_UP_MATCH_SCORE ?? '85', 10);
@@ -491,10 +481,6 @@ export class BiometricsService {
 
   private getMinQualityScore(): number {
     return parseInt(process.env.BIOMETRIC_MIN_QUALITY_SCORE ?? '60', 10);
-  }
-
-  private getCurrentModelVersion(): string {
-    return process.env.BIOMETRIC_MODEL_VERSION ?? 'v1';
   }
 
   private getConsentText(version: string): string {
@@ -517,59 +503,11 @@ Your biometric data is encrypted, never shared with third parties, and used only
     `.trim();
   }
 
-  private async fakeVerification(): Promise<void> {
-    // Simulate verification latency to prevent timing attacks
+  /**
+   * Not a verification: delays the response for an identifier that matches no
+   * user so it is not trivially distinguishable from a real denial by speed.
+   */
+  private async padUnknownIdentifierLatency(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 100 + Math.random() * 200));
-  }
-
-  // ===== Mock/Placeholder Methods (Replace with Real SDK) =====
-
-  private mockFaceEmbedding(sampleBase64: string): string {
-    // Placeholder: in production, return actual 128-d or 512-d face embedding
-    const hash = sampleBase64.slice(0, 64);
-    return JSON.stringify({
-      type: 'face',
-      hash,
-      vector: new Array(128).fill(0).map(() => Math.random()),
-    });
-  }
-
-  private mockVoiceEmbedding(sampleBase64: string): string {
-    // Placeholder: in production, return actual i-vector or x-vector
-    const hash = sampleBase64.slice(0, 64);
-    return JSON.stringify({
-      type: 'voice',
-      hash,
-      vector: new Array(256).fill(0).map(() => Math.random()),
-    });
-  }
-
-  private mockVerification(
-    type: BiometricType,
-    sampleBase64: string,
-    enrollments: BiometricEnrollment[],
-  ): {
-    matchScore: number;
-    livenessScore: number;
-    spoofScore: number;
-    qualityScore: number;
-    matchedEnrollmentId?: string;
-  } {
-    // Placeholder: simulate realistic scores for development
-    // In production, this calls the actual biometric verification SDK
-
-    // For development: generate scores that usually pass
-    const matchScore = 80 + Math.floor(Math.random() * 15); // 80-95
-    const livenessScore = 75 + Math.floor(Math.random() * 20); // 75-95
-    const spoofScore = Math.floor(Math.random() * 20); // 0-20
-    const qualityScore = 70 + Math.floor(Math.random() * 25); // 70-95
-
-    return {
-      matchScore,
-      livenessScore,
-      spoofScore,
-      qualityScore,
-      matchedEnrollmentId: enrollments[0]?.id,
-    };
   }
 }

@@ -1,4 +1,8 @@
+import { randomBytes } from 'crypto';
 import {
+  decryptEmbedding,
+  encryptEmbedding,
+  parseEncryptionKey,
   sha256Hex,
   sha512Hex,
   randomNonce,
@@ -90,5 +94,51 @@ describe('verifyDeviceSignature', () => {
         signatureBase64: 'notasig',
       }),
     ).toBe(false);
+  });
+});
+
+describe('embedding encryption (AES-256-GCM)', () => {
+  const key: Buffer = randomBytes(32);
+
+  it('round-trips', () => {
+    const stored = encryptEmbedding('template-data', key, 'user-1');
+    expect(decryptEmbedding(stored, key, 'user-1')).toBe('template-data');
+  });
+
+  it('does not store the plaintext and uses a fresh IV each time', () => {
+    const a = encryptEmbedding('template-data', key, 'user-1');
+    const b = encryptEmbedding('template-data', key, 'user-1');
+    expect(a.startsWith('v1:')).toBe(true);
+    expect(a).not.toContain(Buffer.from('template-data').toString('base64'));
+    expect(a).not.toBe(b);
+  });
+
+  it('fails with the wrong key', () => {
+    const stored = encryptEmbedding('template-data', key, 'user-1');
+    expect(() => decryptEmbedding(stored, randomBytes(32), 'user-1')).toThrow();
+  });
+
+  it("fails when bound to a different user's context", () => {
+    const stored = encryptEmbedding('template-data', key, 'user-1');
+    expect(() => decryptEmbedding(stored, key, 'user-2')).toThrow();
+  });
+
+  it('detects tampering', () => {
+    const [v, iv, tag, ct] = encryptEmbedding('template-data', key, 'user-1').split(':');
+    const flipped = Buffer.from(ct, 'base64');
+    flipped[0] ^= 0xff;
+    expect(() =>
+      decryptEmbedding([v, iv, tag, flipped.toString('base64')].join(':'), key, 'user-1'),
+    ).toThrow();
+  });
+
+  it('rejects the legacy base64 format', () => {
+    const legacy = Buffer.from('anything').toString('base64');
+    expect(() => decryptEmbedding(legacy, key, 'user-1')).toThrow();
+  });
+
+  it('only accepts a 32-byte key', () => {
+    expect(() => parseEncryptionKey(Buffer.alloc(16).toString('base64'))).toThrow();
+    expect(parseEncryptionKey(key.toString('base64')).length).toBe(32);
   });
 });

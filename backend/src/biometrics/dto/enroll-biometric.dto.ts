@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsString, IsOptional, IsNumber, Min, Max } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsString, IsOptional, IsNumber, Min } from 'class-validator';
 import { BiometricType } from '../biometric-enrollment.entity';
 
 export class EnrollBiometricDto {
