@@ -43,6 +43,52 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     }
   }
 
+  // Decision thresholds: a non-numeric value would make every comparison false
+  // and approve everything, so reject anything that is not a sane integer.
+  for (const name of [
+    'BIOMETRIC_MIN_MATCH_SCORE',
+    'BIOMETRIC_STEP_UP_MATCH_SCORE',
+    'BIOMETRIC_MIN_LIVENESS_SCORE',
+    'BIOMETRIC_MAX_SPOOF_SCORE',
+    'BIOMETRIC_MIN_QUALITY_SCORE',
+  ]) {
+    const raw = config[name];
+    if (raw === undefined || raw === '') continue;
+    if (!/^\d{1,3}$/.test(String(raw)) || Number(raw) > 100) {
+      errors.push(`${name} must be an integer from 0 to 100`);
+    }
+  }
+  const stepUpAmount = config.BIOMETRIC_STEP_UP_AMOUNT_MINOR;
+  if (
+    stepUpAmount !== undefined &&
+    stepUpAmount !== '' &&
+    !/^\d{1,15}$/.test(String(stepUpAmount))
+  ) {
+    errors.push('BIOMETRIC_STEP_UP_AMOUNT_MINOR must be a non-negative integer (minor units)');
+  }
+
+  if (
+    String(config.BIOMETRIC_PROVIDER ?? '')
+      .trim()
+      .toLowerCase() === 'didit'
+  ) {
+    if (!String(config.DIDIT_API_KEY ?? '').trim()) {
+      errors.push('DIDIT_API_KEY is required when BIOMETRIC_PROVIDER=didit');
+    }
+    const keyType = String(config.DIDIT_KEY_TYPE ?? '')
+      .trim()
+      .toLowerCase();
+    if (keyType !== 'live' && keyType !== 'sandbox') {
+      errors.push('DIDIT_KEY_TYPE must be "live" or "sandbox"');
+    }
+    // Didit sandbox keys return a canned "Approved" for every image.
+    if (config.NODE_ENV === 'production' && keyType === 'sandbox') {
+      errors.push(
+        'DIDIT_KEY_TYPE=sandbox is not allowed in production (sandbox approves every face)',
+      );
+    }
+  }
+
   if (errors.length > 0) {
     throw new Error(`Invalid environment configuration:\n- ${errors.join('\n- ')}`);
   }

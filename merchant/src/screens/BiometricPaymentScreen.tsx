@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import type { StackScreenProps } from '@react-navigation/stack';
@@ -26,6 +26,15 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TerminalPaymentResult | null>(null);
+  // null while checking; false when the server has no biometric vendor set up.
+  const [available, setAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    api
+      .biometricStatus()
+      .then((s) => setAvailable(s.available))
+      .catch(() => setAvailable(false));
+  }, []);
 
   const startCapture = async () => {
     setError(null);
@@ -106,9 +115,13 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
         <BigMoney amount={amount} size="display" />
       </View>
       <ErrorBanner message={error} />
-      <NoticeBanner message="The customer must have enrolled their face in the Vireo app." />
+      {available === false ? (
+        <NoticeBanner message="Face payments aren't available yet. Use the QR code instead." />
+      ) : (
+        <NoticeBanner message="The customer must have enrolled their face in the Vireo app." />
+      )}
       <Field label="CUSTOMER PHONE OR $HANDLE" value={identifier} onChangeText={setIdentifier} autoCapitalize="none" placeholder="+2348012345678" />
-      <Button title="Continue to camera" disabled={!identifier.trim()} onPress={startCapture} />
+      <Button title="Continue to camera" disabled={!identifier.trim() || !available} onPress={startCapture} />
     </Screen>
   );
 }

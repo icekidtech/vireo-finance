@@ -62,6 +62,13 @@ export class BiometricsController {
     };
   }
 
+  /** Whether biometrics are configured on this server (no personal data). */
+  @Get('status')
+  @UseGuards(JwtAuthGuard)
+  status() {
+    return this.biometrics.status();
+  }
+
   /**
    * List all biometric enrollments for the authenticated user.
    */

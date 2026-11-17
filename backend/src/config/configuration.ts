@@ -59,6 +59,7 @@ export interface AppConfig {
     provider: string;
     /** Base64 AES-256 key that encrypts stored biometric templates. */
     encryptionKey: string;
+    didit: { apiKey: string; baseUrl: string; keyType: string; timeoutMs: number };
   };
   notifications: {
     sms?: {
@@ -142,6 +143,15 @@ export default (): AppConfig => ({
   biometrics: {
     provider: (process.env.BIOMETRIC_PROVIDER ?? '').trim().toLowerCase(),
     encryptionKey: process.env.BIOMETRIC_ENCRYPTION_KEY ?? '',
+    didit: {
+      apiKey: process.env.DIDIT_API_KEY ?? '',
+      baseUrl: (process.env.DIDIT_BASE_URL ?? 'https://verification.didit.me/v3').replace(
+        /\/+$/,
+        '',
+      ),
+      keyType: (process.env.DIDIT_KEY_TYPE ?? '').trim().toLowerCase(),
+      timeoutMs: parseInt(process.env.DIDIT_TIMEOUT_MS ?? '15000', 10),
+    },
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY ?? '',

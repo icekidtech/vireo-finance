@@ -29,7 +29,7 @@ const content: LandingContent = {
     { icon: '◎', title: 'Pay merchants', body: 'Scan or paste a merchant’s payment code, check the business and the exact amount, then approve.' },
     { icon: '✦', title: 'Ask Vireo', tag: 'Assistant', body: 'Check your balance, review activity or have a payment prepared by chatting. It can prepare a payment but never send one.' },
     { icon: '☰', title: 'See where it went', body: 'One feed shows money in and out, with who it was and when, plus a receipt for every payment.' },
-    { icon: '◉', title: 'Face and voice payments', tag: 'Coming soon', body: 'Opt in to pay at a till without your phone. You control the consent and can delete your data at any time.' },
+    { icon: '◉', title: 'Face payments', tag: 'Coming soon', body: 'Opt in to pay at a till without your phone. You control the consent and can delete your data at any time.' },
   ],
   stepsTitle: 'Up and running in three steps',
   steps: [
@@ -44,7 +44,7 @@ const content: LandingContent = {
     { icon: '✦', title: 'The assistant can’t spend', body: 'It can look things up and prepare a draft. Only your approval on your device releases a payment.' },
     { icon: '↗', title: 'Limits that grow with you', body: 'Daily and per-payment limits depend on your verification level, with checks on unusual activity.' },
     { icon: '☰', title: 'Every movement is recorded', body: 'Balances come from a double-entry ledger, so each naira in or out has a matching record.' },
-    { icon: '◉', title: 'Your biometrics, your call', body: 'Face and voice are opt-in. You can see every verification attempt and delete your data whenever you like.' },
+    { icon: '◉', title: 'Your biometrics, your call', body: 'Face payments are opt-in. You can see every verification attempt and delete your data whenever you like.' },
     { icon: '⌂', title: 'Revoke any device', body: 'Lost a phone? Remove it from your signing devices and it can no longer approve anything.' },
   ],
   closing: 'Ready to take control of your money?',

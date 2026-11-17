@@ -98,7 +98,7 @@ export interface KycState {
 
 export interface BiometricEnrollment {
   id: string;
-  type: 'face' | 'voice';
+  type: 'face';
   status: string;
   qualityScore: number | null;
   modelVersion?: string;

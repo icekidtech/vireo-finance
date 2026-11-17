@@ -5,7 +5,7 @@ import { api } from '../api';
 import { errorMessage, formatDateTime } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
 import type { RootStackParamList } from '../navigation';
-import { Avatar, Button, Card, Empty, ErrorBanner, Header, ListRow, Loading, Screen, SectionTitle, StatusPill } from '../components/ui';
+import { Avatar, Button, Card, Empty, ErrorBanner, Header, ListRow, Loading, NoticeBanner, Screen, SectionTitle, StatusPill } from '../components/ui';
 import { colors, spacing, type } from '../theme';
 import { showAlert } from '../lib/dialog';
 
@@ -14,16 +14,17 @@ type Props = StackScreenProps<RootStackParamList, 'Biometrics'>;
 /** Face enrollments, consent and the recent verification log. */
 export default function BiometricsScreen({ navigation }: Props) {
   const { data, loading, error, refreshing, refresh } = useLoad(async () => {
-    const [enrollments, attempts] = await Promise.all([
+    const [enrollments, attempts, status] = await Promise.all([
       api.listBiometricEnrollments(),
       api.listBiometricAttempts(),
+      api.biometricStatus(),
     ]);
-    return { enrollments, attempts };
+    return { enrollments, attempts, status };
   }, 'Could not load biometric data');
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const revoke = (kind: 'face' | 'voice') =>
-    showAlert(`Remove ${kind} enrollment?`, 'You will no longer be able to pay with it.', [
+  const revoke = (kind: 'face') =>
+    showAlert('Remove your face enrollment?', 'You will no longer be able to pay with it.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
@@ -61,9 +62,9 @@ export default function BiometricsScreen({ navigation }: Props) {
 
   return (
     <Screen refreshing={refreshing} onRefresh={refresh}>
-      <Header title="Face & voice" onBack={() => navigation.goBack()} />
+      <Header title="Face payments" onBack={() => navigation.goBack()} />
       <ErrorBanner message={error ?? actionError} />
-      <Text style={styles.lead}>Enrolled biometrics let you pay at a till without a phone or card. You can delete them at any time.</Text>
+      <Text style={styles.lead}>Enroll your face to pay at a merchant till without your phone. You can delete it at any time.</Text>
 
       <SectionTitle>Enrollments</SectionTitle>
       {active.length > 0 ? (
@@ -71,15 +72,18 @@ export default function BiometricsScreen({ navigation }: Props) {
           <ListRow
             key={e.id}
             leading={<Avatar label={e.type} tone="accent" />}
-            title={e.type === 'face' ? 'Face' : 'Voice'}
+            title="Face"
             subtitle={`Enrolled ${formatDateTime(e.createdAt)}${e.qualityScore != null ? ` · quality ${e.qualityScore}` : ''}`}
             trailing={<Button title="Remove" variant="danger" small onPress={() => revoke(e.type)} />}
           />
         ))
       ) : (
-        <Empty title="Not enrolled" body="No face or voice enrolled yet." />
+        <Empty title="Not enrolled" body="No face enrolled yet." />
       )}
-      <Button title={active.some((e) => e.type === 'face') ? 'Re-enroll face' : 'Enroll your face'} variant="accent" onPress={() => navigation.navigate('BiometricEnroll')} style={{ marginTop: spacing.md }} />
+      {data && !data.status.available ? (
+        <NoticeBanner message="Face payments aren't available yet. We'll let you know when they are." />
+      ) : null}
+      <Button title={active.some((e) => e.type === 'face') ? 'Re-enroll face' : 'Enroll your face'} variant="accent" disabled={!data?.status.available} onPress={() => navigation.navigate('BiometricEnroll')} style={{ marginTop: spacing.md }} />
 
       <SectionTitle>Recent verifications</SectionTitle>
       {data && data.attempts.length > 0 ? (

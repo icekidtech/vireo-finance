@@ -412,6 +412,12 @@ export class BiometricsService {
    * configured every biometric operation fails closed.
    */
   /** Both a vendor adapter and the template-encryption key must exist, checked before any work. */
+  /** Whether enrollment and verification can run, so clients can say so up front. */
+  status(): { available: boolean; types: string[] } {
+    const available = !!this.provider && !!this.encryptionKey;
+    return { available, types: available ? [BiometricType.FACE] : [] };
+  }
+
   private assertReady(): void {
     this.requireProvider();
     this.requireKey();
@@ -489,8 +495,8 @@ export class BiometricsService {
 Vireo Finance Biometric Data Consent (Version ${version})
 
 By consenting, you authorize Vireo Finance to:
-1. Collect and process your facial and/or voice biometric data
-2. Store encrypted biometric templates for identity verification
+1. Collect and process your face photo
+2. Store an encrypted copy of it for identity verification
 3. Use your biometrics to authorize payments at merchant terminals
 4. Retain your data until you revoke consent or close your account
 

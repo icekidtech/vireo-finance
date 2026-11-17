@@ -82,4 +82,51 @@ describe('validateEnv', () => {
       }),
     ).toThrow(/DB_PASSWORD/);
   });
+
+  describe('didit provider', () => {
+    const base = {
+      JWT_SECRET: secret,
+      BIOMETRIC_PROVIDER: 'didit',
+      BIOMETRIC_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+    };
+
+    it('requires an API key and a declared key type', () => {
+      expect(() => validateEnv({ ...base, DIDIT_KEY_TYPE: 'live' })).toThrow(/DIDIT_API_KEY/);
+      expect(() => validateEnv({ ...base, DIDIT_API_KEY: 'k' })).toThrow(/DIDIT_KEY_TYPE/);
+      expect(() =>
+        validateEnv({ ...base, DIDIT_API_KEY: 'k', DIDIT_KEY_TYPE: 'live' }),
+      ).not.toThrow();
+    });
+
+    it('refuses a sandbox key in production', () => {
+      expect(() =>
+        validateEnv({
+          ...base,
+          NODE_ENV: 'production',
+          DB_HOST: 'h',
+          DB_USER: 'u',
+          DB_PASSWORD: 'p',
+          DB_NAME: 'n',
+          DIDIT_API_KEY: 'k',
+          DIDIT_KEY_TYPE: 'sandbox',
+        }),
+      ).toThrow(/sandbox/);
+    });
+  });
+
+  it('rejects biometric thresholds that would make every check pass', () => {
+    expect(() => validateEnv({ JWT_SECRET: secret, BIOMETRIC_MIN_MATCH_SCORE: 'abc' })).toThrow(
+      /BIOMETRIC_MIN_MATCH_SCORE/,
+    );
+    expect(() => validateEnv({ JWT_SECRET: secret, BIOMETRIC_MAX_SPOOF_SCORE: '150' })).toThrow(
+      /BIOMETRIC_MAX_SPOOF_SCORE/,
+    );
+    expect(() =>
+      validateEnv({
+        JWT_SECRET: secret,
+        BIOMETRIC_MIN_MATCH_SCORE: '80',
+        BIOMETRIC_STEP_UP_AMOUNT_MINOR: '5000000',
+      }),
+    ).not.toThrow();
+  });
 });

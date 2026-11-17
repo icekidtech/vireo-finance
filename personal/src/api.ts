@@ -179,6 +179,12 @@ export class VireoApi {
 
   /* ── Biometrics ── */
 
+  /** Whether this server has a biometric vendor configured. */
+  async biometricStatus() {
+    const { data } = await this.client.get<{ available: boolean; types: string[] }>('/biometrics/status');
+    return data;
+  }
+
   async listBiometricEnrollments() {
     const { data } = await this.client.get<{ enrollments: BiometricEnrollment[] }>('/biometrics/enrollments');
     return data.enrollments;
@@ -201,7 +207,7 @@ export class VireoApi {
     await this.client.delete('/biometrics/consent');
   }
 
-  async enrollBiometric(type: 'face' | 'voice', sampleBase64: string, consentId: string) {
+  async enrollBiometric(type: 'face', sampleBase64: string, consentId: string) {
     const { data } = await this.client.post<BiometricEnrollment>('/biometrics/enroll', {
       type,
       sampleBase64,
@@ -210,7 +216,7 @@ export class VireoApi {
     return data;
   }
 
-  async revokeBiometricEnrollment(type: 'face' | 'voice', reason?: string) {
+  async revokeBiometricEnrollment(type: 'face', reason?: string) {
     await this.client.delete('/biometrics/enrollments', { data: { type, reason } });
   }
 

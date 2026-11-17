@@ -190,14 +190,19 @@ export class VireoApi {
 
   /* ── Biometrics (terminal payments) ── */
 
+  async biometricStatus() {
+    const { data } = await this.client.get<{ available: boolean; types: string[] }>('/biometrics/status');
+    return data;
+  }
+
   /**
-   * Face/voice payment at the till. Always resolves with a `status`; the
+   * Face payment at the till. Always resolves with a `status`; the
    * server never says why a biometric was denied.
    */
   async terminalPayment(input: {
     orderReference: string;
     customerIdentifier: string;
-    biometricType: 'face' | 'voice';
+    biometricType: 'face';
     biometricSample: string;
   }) {
     const { data } = await this.client.post<TerminalPaymentResult>(

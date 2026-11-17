@@ -49,7 +49,7 @@ export default function ProfileScreen({ navigation }: Props) {
       <SectionTitle>Security</SectionTitle>
       <Card style={{ paddingVertical: spacing.sm }}>
         <ListRow title="Signing devices" subtitle="Phones that can approve payments" trailing="›" onPress={() => navigation.navigate('Devices')} />
-        <ListRow title="Face & voice" subtitle="Pay without your phone at merchant tills" trailing="›" onPress={() => navigation.navigate('Biometrics')} />
+        <ListRow title="Face payments" subtitle="Pay without your phone at merchant tills" trailing="›" onPress={() => navigation.navigate('Biometrics')} />
       </Card>
 
       {user?.role === 'admin' && (

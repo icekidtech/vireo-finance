@@ -12,7 +12,7 @@ import { colors, spacing, type } from '../theme';
 type Props = StackScreenProps<RootStackParamList, 'BiometricEnroll'>;
 type Stage = 'consent' | 'capture' | 'done';
 
-const CONSENT_VERSION = 'v1.0';
+const CONSENT_VERSION = 'v1.1';
 
 export default function BiometricEnrollScreen({ navigation }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -93,10 +93,12 @@ export default function BiometricEnrollScreen({ navigation }: Props) {
       <Card>
         <Text style={styles.consentTitle}>Biometric consent ({CONSENT_VERSION})</Text>
         <Text style={styles.consent}>
-          By continuing you allow Vireo Finance to collect and process your face data, store an
-          encrypted template, and use it to verify you when you pay at a merchant till.{'\n\n'}
-          You can remove it at any time from Profile → Face & voice, which deletes your template and
-          revokes this consent. You can see every verification attempt in the same place.
+          By continuing you allow Vireo Finance to collect your face photo, check that it shows a
+          live person, store an encrypted copy, and use it to verify you when you pay at a merchant
+          till. Your photos are sent securely to our identity-verification provider only to run
+          those checks, and the provider does not keep them.{'\n\n'}
+          You can remove it at any time from Profile → Face payments, which deletes your stored
+          photo and revokes this consent. You can see every verification attempt in the same place.
         </Text>
       </Card>
       <Button title="I agree, continue" variant="accent" loading={busy} onPress={agree} />
