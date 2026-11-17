@@ -27,6 +27,7 @@ describe('KycService', () => {
       mockRepo(null),
       { get: jest.fn() } as any,
       null,
+      { isAvailable: () => false } as any,
     );
   });
 

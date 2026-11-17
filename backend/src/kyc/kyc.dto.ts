@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, Length, Matches } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
 import { KycStatus } from '../common/enums';
 
 const KYC_PROVIDER_PATTERN = /^[a-zA-Z0-9_-]{2,40}$/;
@@ -34,6 +34,37 @@ export class VerifyBvnDto {
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'dateOfBirth must be YYYY-MM-DD' })
   dateOfBirth: string;
+
+  /** Live selfie (base64 JPEG/PNG). Checked for liveness and matched to the BVN photo. */
+  @IsString()
+  @Length(100, 6_000_000)
+  selfie: string;
+}
+
+export class VerifyTier2Dto {
+  @IsString()
+  @Matches(/^\d{11}$/, { message: 'nin must be 11 digits' })
+  nin: string;
+
+  @IsUUID()
+  idFrontDocumentId: string;
+
+  @IsOptional()
+  @IsUUID()
+  idBackDocumentId?: string;
+
+  @IsString()
+  @Length(100, 6_000_000)
+  selfie: string;
+}
+
+export class VerifyTier3Dto {
+  @IsString()
+  @Length(10, 200)
+  address: string;
+
+  @IsUUID()
+  proofDocumentId: string;
 }
 
 export class VerifyKycDto {

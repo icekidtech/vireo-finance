@@ -24,6 +24,8 @@ export class AccountsController {
       balance: formatMinor(balance.balance),
       held: formatMinor(balance.held),
       available: formatMinor(balance.available),
+      /** Part of the balance held back until more identity verification is done. */
+      restricted: formatMinor(await this.accounts.restrictedFor(wallet.id)),
       virtualAccount: virtualAccount
         ? {
             accountNumber: virtualAccount.accountNumber,

@@ -7,6 +7,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
@@ -36,6 +37,7 @@ import { MerchantOrder } from '../merchant/merchant-order.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PagaService } from '../paga/paga.service';
 import { RiskService } from '../risk/risk.service';
+import { BalanceCapService } from '../risk/balance-cap.service';
 import { User } from '../users/user.entity';
 import { BankLookupDto, CreateTransferDraftDto } from './dto/transfers.dto';
 import { Transfer } from './transfer.entity';
@@ -63,6 +65,7 @@ export class TransfersService {
     private readonly risk: RiskService,
     private readonly paga: PagaService,
     private readonly notifications: NotificationsService,
+    @Optional() private readonly balanceCaps?: BalanceCapService,
   ) {}
 
   /** Banks Paga can pay out to, for the client's bank picker. */
@@ -319,7 +322,23 @@ export class TransfersService {
       return manager.getRepository(Transfer).save(locked);
     });
 
+    // The recipient's balance may now exceed their tier cap; the sender's may have dropped below it.
+    await this.reconcileCaps([
+      transfer.destinationAccountId
+        ? await this.accounts.walletOwner(transfer.destinationAccountId)
+        : null,
+      transfer.initiatedByUserId,
+    ]);
     return { transfer: presentTransfer(transfer) };
+  }
+
+  private async reconcileCaps(userIds: (string | null | undefined)[]): Promise<void> {
+    if (!this.balanceCaps) return;
+    for (const id of new Set(userIds.filter((v): v is string => !!v))) {
+      await this.balanceCaps
+        .reconcile(id)
+        .catch((e) => this.logger.warn(`Balance cap reconcile failed for ${id}: ${String(e)}`));
+    }
   }
 
   private async executeMerchant(userId: string, transferId: string, signature: string) {

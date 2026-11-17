@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import type { PickedFile } from './lib/documents';
 import type {
   AppNotification,
   BusinessLevels,
@@ -135,7 +136,7 @@ export class VireoApi {
   }
 
   /** Checks name, date of birth and BVN against the bank record. */
-  async verifyBvn(input: { bvn: string; firstName: string; lastName: string; dateOfBirth: string }) {
+  async verifyBvn(input: { bvn: string; firstName: string; lastName: string; dateOfBirth: string; selfie: string }) {
     const { data } = await this.client.post<KycState>('/kyc/bvn', input);
     return data;
   }
@@ -146,9 +147,39 @@ export class VireoApi {
   }
 
   /** Level 2: submits the CAC number (and TIN) for review. */
-  async submitRegistration(input: { cacNumber: string; tin?: string }) {
+  async submitRegistration(input: { cacNumber: string; tin?: string; certificateDocumentId: string }) {
     const { data } = await this.client.post<BusinessLevels>('/merchants/me/registration', input);
     return data;
+  }
+
+  /* ── Documents (private storage, served only through the API) ── */
+
+  /** Uploads one file; the server encrypts it and keeps it in private storage. */
+  async uploadDocument(
+    kind: 'id_front' | 'id_back' | 'proof_of_address' | 'cac_certificate',
+    file: PickedFile,
+  ) {
+    const form = new FormData();
+    form.append('kind', kind);
+    if (file.file) {
+      form.append('file', file.file, file.name); // web
+    } else {
+      form.append('file', { uri: file.uri, name: file.name, type: file.mimeType } as unknown as Blob);
+    }
+    const { data } = await this.client.post<{ id: string; kind: string; mime: string; size: number }>(
+      '/documents',
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60_000 },
+    );
+    return data;
+  }
+
+  /** Staff only (web): opens a stored document in a new tab. The file never has a public URL. */
+  async viewDocument(documentId: string) {
+    const { data } = await this.client.get<Blob>(`/documents/${documentId}/content`, { responseType: 'blob' });
+    const url = URL.createObjectURL(data);
+    window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
   /** Re-checks whether the business now qualifies for automatic verification. */

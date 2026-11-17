@@ -8,6 +8,9 @@ import { useLoad } from '../lib/useLoad';
 import type { VerificationOutcome } from '../types';
 import type { RootStackParamList } from '../navigation';
 import { Button, Card, ErrorBanner, Field, Header, ListRow, Loading, NoticeBanner, Screen, StatusPill } from '../components/ui';
+import FilePicker from '../components/FilePicker';
+import SelfieCapture from '../components/SelfieCapture';
+import { pickDocument, type PickedFile } from '../lib/documents';
 import { colors, spacing, type } from '../theme';
 
 type Props = StackScreenProps<RootStackParamList, 'Verify'>;
@@ -48,6 +51,9 @@ export default function VerifyScreen({ navigation }: Props) {
   const [lastName, setLastName] = useState(() => splitFullName(user?.name).lastName);
   const [dob, setDob] = useState('');
   const [bvn, setBvn] = useState('');
+  const [selfie, setSelfie] = useState<string | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const [certificate, setCertificate] = useState<PickedFile | null>(null);
   const [cac, setCac] = useState('');
   const [tin, setTin] = useState('');
   const [busy, setBusy] = useState(false);
@@ -55,7 +61,11 @@ export default function VerifyScreen({ navigation }: Props) {
   const [outcome, setOutcome] = useState<VerificationOutcome | null>(null);
 
   const ready =
-    firstName.trim().length > 0 && lastName.trim().length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(dob) && /^\d{11}$/.test(bvn);
+    firstName.trim().length > 0 &&
+    lastName.trim().length > 0 &&
+    /^\d{4}-\d{2}-\d{2}$/.test(dob) &&
+    /^\d{11}$/.test(bvn) &&
+    !!selfie;
 
   const run = async (work: () => Promise<unknown>, fallback: string) => {
     setBusy(true);
@@ -73,11 +83,24 @@ export default function VerifyScreen({ navigation }: Props) {
 
   const submit = () =>
     run(async () => {
-      await api.verifyBvn({ bvn, firstName: firstName.trim(), lastName: lastName.trim(), dateOfBirth: dob });
+      await api.verifyBvn({ bvn, firstName: firstName.trim(), lastName: lastName.trim(), dateOfBirth: dob, selfie: selfie! });
       setBvn(''); // never keep the BVN in memory longer than needed
+      setSelfie(null);
     }, 'Could not verify your details');
 
   if (loading && !data) return <Loading />;
+
+  if (capturing) {
+    return (
+      <SelfieCapture
+        onCapture={(b64) => {
+          setSelfie(b64);
+          setCapturing(false);
+        }}
+        onCancel={() => setCapturing(false)}
+      />
+    );
+  }
 
   const kyc = data?.kyc;
   const identityDone = !!kyc && kyc.kycTier >= 1;
@@ -135,15 +158,17 @@ export default function VerifyScreen({ navigation }: Props) {
                 CAC register.
               </Text>
               <Field label="CAC NUMBER" placeholder="RC1234567" value={cac} onChangeText={(v) => setCac(v.toUpperCase())} autoCapitalize="characters" maxLength={12} hint="RC for companies, BN for business names, IT for incorporated trustees." />
+              <FilePicker label="CAC CERTIFICATE" file={certificate} onPick={async () => { try { const f = await pickDocument(true); if (f) setCertificate(f); } catch { setActionError('Could not open the file picker'); } }} hint="JPG, PNG or PDF, up to 8 MB. Stored privately and only seen by our review team." />
               <Field label="TIN (OPTIONAL)" placeholder="12345678-0001" value={tin} onChangeText={setTin} keyboardType="number-pad" maxLength={20} />
               <Button
                 title="Submit for review"
                 variant="accent"
                 loading={busy}
-                disabled={!/^(RC|BN|IT)\s?\d{5,8}$/i.test(cac.trim())}
+                disabled={!/^(RC|BN|IT)\s?\d{5,8}$/i.test(cac.trim()) || !certificate}
                 onPress={() =>
                   run(async () => {
-                    await api.submitRegistration({ cacNumber: cac.trim(), tin: tin.trim() || undefined });
+                    const doc = await api.uploadDocument('cac_certificate', certificate!);
+                    await api.submitRegistration({ cacNumber: cac.trim(), tin: tin.trim() || undefined, certificateDocumentId: doc.id });
                   }, 'Could not submit your registration')
                 }
               />
@@ -178,9 +203,12 @@ export default function VerifyScreen({ navigation }: Props) {
             maxLength={11}
             hint="Dial *565*0# on the phone number linked to your bank to get your BVN."
           />
+          <Text style={styles.selfieLabel}>LIVE SELFIE</Text>
+          <Button title={selfie ? 'Retake selfie' : 'Take selfie'} variant="secondary" onPress={() => setCapturing(true)} />
+          {selfie ? <Text style={styles.consent}>Selfie captured ✓</Text> : null}
           <Text style={styles.consent}>
-            By continuing you allow us to check these details against the banking BVN database through our
-            identity-verification provider. We keep your BVN encrypted and never show it to anyone.
+            By continuing you allow us to check these details and your selfie against the banking BVN database
+            through our identity-verification provider. We keep your BVN encrypted and never show it to anyone.
           </Text>
           <Button title="Verify" variant="accent" loading={busy} disabled={!ready} onPress={submit} />
         </View>
@@ -196,5 +224,6 @@ const styles = StyleSheet.create({
   levelName: { ...type.bodyStrong, color: colors.text },
   limit: { ...type.body, color: colors.textMuted, marginVertical: spacing.sm },
   req: { ...type.caption, color: colors.textMuted, marginTop: 2 },
+  selfieLabel: { ...type.label, color: colors.textMuted, marginBottom: spacing.sm },
   consent: { ...type.caption, color: colors.textMuted, marginBottom: spacing.lg },
 });

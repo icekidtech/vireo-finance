@@ -33,6 +33,21 @@ export class KycIdentity {
   @Column({ type: 'date' })
   dateOfBirth: string;
 
+  /** Keyed hash of the NIN (one NIN per account); null until tier 2. */
+  @Index({ unique: true, where: '"ninHash" IS NOT NULL' })
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  ninHash: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  ninEncrypted: string | null;
+
+  @Column({ type: 'varchar', length: 4, nullable: true })
+  ninLast4: string | null;
+
+  /** The home address proved at tier 3, encrypted. */
+  @Column({ type: 'text', nullable: true })
+  addressEncrypted: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   verifiedAt: Date;
 }

@@ -641,6 +641,7 @@ export function presentMerchant(merchant: Merchant) {
     kybStatus: merchant.kybStatus,
     registrationStatus: merchant.registrationStatus,
     cacNumber: merchant.cacNumber,
+    cacDocumentId: merchant.cacDocumentId,
     status: merchant.status,
     settlementBankCode: merchant.settlementBankCode,
     settlementAccountNumber: merchant.settlementAccountNumber,

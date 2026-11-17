@@ -17,7 +17,11 @@ import { Repository } from 'typeorm';
 import { encryptEmbedding, hmacSha256Hex, parseEncryptionKey } from '../common/crypto';
 import { KycStatus, UserStatus } from '../common/enums';
 import { User } from '../users/user.entity';
-import { BVN_VERIFIER, BvnVerifier } from './bvn-verifier';
+import { DocumentsService } from '../documents/documents.service';
+import { sniffMime } from '../documents/documents.service';
+import { IDENTITY_VERIFIER, IdentityVerifier } from './identity-verifier';
+import { nameMatches } from './names';
+import { BalanceCapService } from '../risk/balance-cap.service';
 import { PERSONAL_TIERS } from './tiers';
 import { formatMinor } from '../database/money';
 import { KycIdentity } from './kyc-identity.entity';
@@ -28,10 +32,17 @@ import {
   UserKycResponse,
   VerifyBvnDto,
   VerifyKycDto,
+  VerifyTier2Dto,
+  VerifyTier3Dto,
 } from './kyc.dto';
 
 const BVN_PROVIDER = 'bvn';
-const MAX_FAILED_BVN_ATTEMPTS = 3;
+const NIN_PROVIDER = 'nin_id';
+const ADDRESS_PROVIDER = 'address';
+const MAX_FAILED_ATTEMPTS = 3;
+const MAX_SELFIE_BYTES = 4 * 1024 * 1024;
+const REJECT_MESSAGE =
+  'We could not verify these details. Check that they match your records and try again.';
 const ATTEMPT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MIN_AGE_YEARS = 18;
 
@@ -44,7 +55,9 @@ export class KycService {
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(KycIdentity) private readonly identities: Repository<KycIdentity>,
     private readonly config: ConfigService,
-    @Optional() @Inject(BVN_VERIFIER) private readonly bvnVerifier: BvnVerifier | null,
+    @Optional() @Inject(IDENTITY_VERIFIER) private readonly verifier: IdentityVerifier | null,
+    private readonly documents: DocumentsService,
+    @Optional() private readonly balanceCaps?: BalanceCapService,
   ) {}
 
   /**
@@ -54,11 +67,14 @@ export class KycService {
   async getTiers(userId: string) {
     const status = await this.getUserKycStatus(userId);
     const limits = this.config.get<Record<number, bigint>>('risk.tierDailyLimits') ?? {};
+    const maxBalances = this.config.get<Record<number, bigint>>('risk.tierMaxBalance') ?? {};
+    const canVerify = this.available();
+    const withDocuments = canVerify && this.documents.isAvailable();
     const availableNow: Record<string, boolean> = {
       phone: true,
-      bvn: status.bvnAvailable,
-      nin_id: false, // needs a NIN / ID-document verification vendor
-      address: false, // needs an address-verification vendor
+      bvn: canVerify,
+      nin_id: withDocuments,
+      address: withDocuments,
     };
     return {
       currentTier: status.kycTier,
@@ -66,6 +82,8 @@ export class KycService {
         tier: def.tier,
         name: def.name,
         dailyLimit: formatMinor(limits[def.tier] ?? 0n),
+        /** Null means no cap on the wallet balance. */
+        maxBalance: (maxBalances[def.tier] ?? 0n) > 0n ? formatMinor(maxBalances[def.tier]) : null,
         state:
           def.tier <= status.kycTier
             ? 'completed'
@@ -91,21 +109,104 @@ export class KycService {
     }
   }
 
-  private bvnAvailable(): boolean {
-    return !!this.bvnVerifier && !!this.bvnKey();
+  /** Verification needs a vendor and the key that encrypts the numbers we keep. */
+  private available(): boolean {
+    return !!this.verifier && !!this.bvnKey();
+  }
+
+  private requireReady(): { verifier: IdentityVerifier; key: Buffer } {
+    const key = this.bvnKey();
+    if (!this.verifier || !key) {
+      throw new ServiceUnavailableException('Identity verification is not available yet');
+    }
+    return { verifier: this.verifier, key };
+  }
+
+  private minFaceMatch(): number {
+    return this.config.get<number>('kyc.minFaceMatch') ?? 75;
+  }
+
+  /** Failed automated attempts are capped per user and step, so a step cannot be used to probe records. */
+  private async assertAttemptsLeft(userId: string, provider: string): Promise<void> {
+    const failed = await this.kycRecords.count({
+      where: {
+        userId,
+        provider,
+        status: KycStatus.REJECTED,
+        createdAt: MoreThan(new Date(Date.now() - ATTEMPT_WINDOW_MS)),
+      },
+    });
+    if (failed >= MAX_FAILED_ATTEMPTS) {
+      throw new HttpException(
+        'Too many unsuccessful attempts. Please try again tomorrow or contact support.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  /** Records a failed attempt and answers with one generic message (never why it failed). */
+  private async rejectAttempt(
+    userId: string,
+    provider: string,
+    reason: string,
+    extra: Record<string, unknown> = {},
+  ): Promise<never> {
+    await this.kycRecords.save(
+      this.kycRecords.create({
+        userId,
+        tier: 0,
+        provider,
+        status: KycStatus.REJECTED,
+        payload: { reason, ...extra },
+      }),
+    );
+    throw new BadRequestException(REJECT_MESSAGE);
+  }
+
+  private decodeSelfie(selfieBase64: string): Buffer {
+    const raw = selfieBase64.replace(/^data:image\/[a-z+]+;base64,/i, '');
+    const bytes = Buffer.from(raw, 'base64');
+    if (bytes.length === 0 || bytes.length > MAX_SELFIE_BYTES || sniffMime(bytes) === null) {
+      throw new BadRequestException('Take a clear selfie and try again');
+    }
+    return bytes;
+  }
+
+  private async finishTier(
+    userId: string,
+    tier: number,
+    provider: string,
+    payload: Record<string, unknown>,
+  ) {
+    await this.kycRecords.save(
+      this.kycRecords.create({
+        userId,
+        tier,
+        provider,
+        status: KycStatus.VERIFIED,
+        payload,
+        verifiedAt: new Date(),
+      }),
+    );
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (user && user.kycTier < tier) {
+      user.kycTier = tier;
+      await this.users.save(user);
+    }
+    // A higher tier raises the balance cap: release anything held back by the old one.
+    await this.balanceCaps
+      ?.reconcile(userId)
+      .catch((e) => this.logger.warn(`Balance cap reconcile failed: ${String(e)}`));
   }
 
   /**
-   * Tier 1: proves the user's name and date of birth match their BVN record.
-   * The BVN is never returned or logged; it is stored encrypted, with a keyed
-   * hash so one BVN cannot verify several accounts. Failed attempts are
-   * capped per user to stop the endpoint being used to probe BVN records.
+   * Tier 1: proves the user's name and date of birth match their BVN record and
+   * that their live selfie matches the BVN photo. The BVN is never returned or
+   * logged; it is stored encrypted, with a keyed hash so one BVN cannot verify
+   * several accounts.
    */
   async verifyBvn(userId: string, dto: VerifyBvnDto): Promise<UserKycResponse> {
-    const key = this.bvnKey();
-    if (!this.bvnVerifier || !key) {
-      throw new ServiceUnavailableException('Identity verification is not available yet');
-    }
+    const { verifier, key } = this.requireReady();
     this.assertAdult(dto.dateOfBirth);
 
     const user = await this.users.findOne({ where: { id: userId } });
@@ -113,93 +214,141 @@ export class KycService {
     if (await this.identities.findOne({ where: { userId } })) {
       throw new ConflictException('Your identity is already verified');
     }
-
-    const failed = await this.kycRecords.count({
-      where: {
-        userId,
-        provider: BVN_PROVIDER,
-        status: KycStatus.REJECTED,
-        createdAt: MoreThan(new Date(Date.now() - ATTEMPT_WINDOW_MS)),
-      },
-    });
-    if (failed >= MAX_FAILED_BVN_ATTEMPTS) {
-      throw new HttpException(
-        'Too many unsuccessful attempts. Please try again tomorrow or contact support.',
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
+    await this.assertAttemptsLeft(userId, BVN_PROVIDER);
+    const selfie = this.decodeSelfie(dto.selfie);
 
     const last4 = dto.bvn.slice(-4);
     const bvnHash = hmacSha256Hex(key.toString('base64'), `kyc-bvn:${dto.bvn}`);
-
-    // Same message for "no match" and "already used", so this cannot be used
-    // to learn whether a BVN is registered with us.
-    const rejectMessage =
-      'We could not verify these details. Check that they match your BVN record and try again.';
-    const reject = async (reason: string): Promise<never> => {
-      await this.kycRecords.save(
-        this.kycRecords.create({
-          userId,
-          tier: 0,
-          provider: BVN_PROVIDER,
-          status: KycStatus.REJECTED,
-          payload: { reason, bvnLast4: last4 },
-        }),
-      );
-      throw new BadRequestException(rejectMessage);
-    };
-
-    const usedBy = await this.identities.findOne({ where: { bvnHash } });
-    if (usedBy) {
+    if (await this.identities.findOne({ where: { bvnHash } })) {
       this.logger.warn(
         `BVN ending ${last4} is already verified on another account (user ${userId})`,
       );
-      return reject('bvn_in_use');
+      return this.rejectAttempt(userId, BVN_PROVIDER, 'bvn_in_use', { bvnLast4: last4 });
     }
 
-    const matched = await this.bvnVerifier.verify({
+    // A photo of a photo would fool a face match, so the selfie must be a live person first.
+    if (!(await verifier.isLive(selfie))) {
+      return this.rejectAttempt(userId, BVN_PROVIDER, 'not_live', { bvnLast4: last4 });
+    }
+    const matched = await verifier.verifyBvn({
       bvn: dto.bvn,
       firstName: dto.firstName.trim(),
       lastName: dto.lastName.trim(),
       dateOfBirth: dto.dateOfBirth,
+      selfie,
     });
-    if (!matched) return reject('no_match');
+    if (!matched) return this.rejectAttempt(userId, BVN_PROVIDER, 'no_match', { bvnLast4: last4 });
 
     try {
-      await this.kycRecords.manager.transaction(async (manager) => {
-        await manager.getRepository(KycIdentity).save(
-          manager.getRepository(KycIdentity).create({
-            userId,
-            bvnHash,
-            bvnEncrypted: encryptEmbedding(dto.bvn, key, userId),
-            bvnLast4: last4,
-            firstName: dto.firstName.trim(),
-            lastName: dto.lastName.trim(),
-            dateOfBirth: dto.dateOfBirth,
-          }),
-        );
-        await manager.getRepository(KycRecord).save(
-          manager.getRepository(KycRecord).create({
-            userId,
-            tier: 1,
-            provider: BVN_PROVIDER,
-            status: KycStatus.VERIFIED,
-            payload: { bvnLast4: last4, method: this.bvnVerifier!.name },
-            verifiedAt: new Date(),
-          }),
-        );
-        await manager
-          .getRepository(User)
-          .update({ id: userId }, { kycTier: Math.max(user.kycTier, 1) });
-      });
+      await this.identities.save(
+        this.identities.create({
+          userId,
+          bvnHash,
+          bvnEncrypted: encryptEmbedding(dto.bvn, key, userId),
+          bvnLast4: last4,
+          firstName: dto.firstName.trim(),
+          lastName: dto.lastName.trim(),
+          dateOfBirth: dto.dateOfBirth,
+        }),
+      );
     } catch (error) {
       // Unique-index race: the same BVN or user verified concurrently.
       if ((error as { code?: string }).code === '23505') {
-        return reject('bvn_in_use');
+        return this.rejectAttempt(userId, BVN_PROVIDER, 'bvn_in_use', { bvnLast4: last4 });
       }
       throw error;
     }
+    await this.finishTier(userId, 1, BVN_PROVIDER, { bvnLast4: last4, method: verifier.name });
+    return this.getUserKycStatus(userId);
+  }
 
+  /**
+   * Tier 2: the NIN matches the BVN identity, the government ID is genuine and
+   * belongs to the same person, and the live selfie matches the ID photo.
+   */
+  async verifyNinAndId(userId: string, dto: VerifyTier2Dto): Promise<UserKycResponse> {
+    const { verifier, key } = this.requireReady();
+    const identity = await this.identities.findOne({ where: { userId } });
+    if (!identity) throw new BadRequestException('Verify your BVN (tier 1) first');
+    if (identity.ninHash) throw new ConflictException('Your NIN is already verified');
+    await this.assertAttemptsLeft(userId, NIN_PROVIDER);
+
+    const front = await this.documents.loadOwned(userId, dto.idFrontDocumentId, ['id_front']);
+    const back = dto.idBackDocumentId
+      ? await this.documents.loadOwned(userId, dto.idBackDocumentId, ['id_back'])
+      : undefined;
+    const selfie = this.decodeSelfie(dto.selfie);
+
+    const last4 = dto.nin.slice(-4);
+    const ninHash = hmacSha256Hex(key.toString('base64'), `kyc-nin:${dto.nin}`);
+    if (await this.identities.findOne({ where: { ninHash } })) {
+      this.logger.warn(
+        `NIN ending ${last4} is already verified on another account (user ${userId})`,
+      );
+      return this.rejectAttempt(userId, NIN_PROVIDER, 'nin_in_use', { ninLast4: last4 });
+    }
+
+    if (!(await verifier.isLive(selfie)))
+      return this.rejectAttempt(userId, NIN_PROVIDER, 'not_live');
+    const ninOk = await verifier.verifyNin({
+      nin: dto.nin,
+      firstName: identity.firstName,
+      lastName: identity.lastName,
+      dateOfBirth: identity.dateOfBirth,
+    });
+    if (!ninOk)
+      return this.rejectAttempt(userId, NIN_PROVIDER, 'nin_no_match', { ninLast4: last4 });
+
+    const doc = await verifier.readIdDocument(front.bytes, back?.bytes);
+    const sameName = nameMatches(
+      `${doc.firstName} ${doc.lastName}`,
+      identity.firstName,
+      identity.lastName,
+    );
+    const sameBirth = !doc.dateOfBirth || doc.dateOfBirth === identity.dateOfBirth;
+    if (!doc.approved || !sameName || !sameBirth || !doc.portrait) {
+      return this.rejectAttempt(userId, NIN_PROVIDER, 'id_not_accepted');
+    }
+    if ((await verifier.faceMatchScore(selfie, doc.portrait)) < this.minFaceMatch()) {
+      return this.rejectAttempt(userId, NIN_PROVIDER, 'face_mismatch');
+    }
+
+    try {
+      identity.ninHash = ninHash;
+      identity.ninEncrypted = encryptEmbedding(dto.nin, key, userId);
+      identity.ninLast4 = last4;
+      await this.identities.save(identity);
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') {
+        return this.rejectAttempt(userId, NIN_PROVIDER, 'nin_in_use', { ninLast4: last4 });
+      }
+      throw error;
+    }
+    await this.finishTier(userId, 2, NIN_PROVIDER, { ninLast4: last4, method: verifier.name });
+    return this.getUserKycStatus(userId);
+  }
+
+  /** Tier 3: a recent utility bill or bank statement in this person's name at the stated address. */
+  async verifyAddress(userId: string, dto: VerifyTier3Dto): Promise<UserKycResponse> {
+    const { verifier, key } = this.requireReady();
+    const identity = await this.identities.findOne({ where: { userId } });
+    if (!identity?.ninHash) throw new BadRequestException('Verify your NIN and ID (tier 2) first');
+    if (identity.addressEncrypted) throw new ConflictException('Your address is already verified');
+    await this.assertAttemptsLeft(userId, ADDRESS_PROVIDER);
+
+    const proof = await this.documents.loadOwned(userId, dto.proofDocumentId, ['proof_of_address']);
+    const approved = await verifier.verifyProofOfAddress({
+      document: proof.bytes,
+      mime: proof.mime,
+      address: dto.address.trim(),
+      firstName: identity.firstName,
+      lastName: identity.lastName,
+    });
+    if (!approved) return this.rejectAttempt(userId, ADDRESS_PROVIDER, 'address_not_accepted');
+
+    identity.addressEncrypted = encryptEmbedding(dto.address.trim(), key, userId);
+    await this.identities.save(identity);
+    await this.finishTier(userId, 3, ADDRESS_PROVIDER, { method: verifier.name });
     return this.getUserKycStatus(userId);
   }
 
@@ -275,7 +424,7 @@ export class KycService {
       userId,
       kycTier: user.kycTier,
       status,
-      bvnAvailable: this.bvnAvailable(),
+      bvnAvailable: this.available(),
       bvnLast4: identity?.bvnLast4 ?? null,
     };
   }

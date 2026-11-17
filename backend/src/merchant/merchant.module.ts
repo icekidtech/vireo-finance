@@ -9,6 +9,8 @@ import { LedgerModule } from '../ledger/ledger.module';
 import { PagaModule } from '../paga/paga.module';
 import { TransfersModule } from '../transfers/transfers.module';
 import { MerchantOrderController } from './merchant-order.controller';
+import { DocumentsModule } from '../documents/documents.module';
+import { KycModule } from '../kyc/kyc.module';
 import { MerchantVerificationService } from './merchant-verification.service';
 import { KycIdentity } from '../kyc/kyc-identity.entity';
 import { MerchantDepositService } from './merchant-deposit.service';
@@ -37,6 +39,8 @@ import { User } from '../users/user.entity';
     PagaModule,
     TransfersModule,
     BiometricsModule,
+    DocumentsModule,
+    KycModule,
   ],
   controllers: [MerchantController, MerchantOrderController],
   providers: [

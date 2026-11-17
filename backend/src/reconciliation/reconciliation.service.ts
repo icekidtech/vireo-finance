@@ -1,12 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Repository } from 'typeorm';
-import {
-  PagaEventStatus,
-  SettlementStatus,
-  TransferStatus,
-  TransferType,
-} from '../common/enums';
+import { PagaEventStatus, SettlementStatus, TransferStatus, TransferType } from '../common/enums';
 import { MerchantService } from '../merchant/merchant.service';
 import { Settlement } from '../merchant/settlement.entity';
 import { PagaService } from '../paga/paga.service';
@@ -54,9 +49,7 @@ export class ReconciliationService {
         }
         results.push({ id: transfer.id, providerStatus: providerStatus.status });
       } catch (error) {
-        this.logger.error(
-          `Reconciliation failed for transfer=${transfer.id}: ${String(error)}`,
-        );
+        this.logger.error(`Reconciliation failed for transfer=${transfer.id}: ${String(error)}`);
       }
     }
 

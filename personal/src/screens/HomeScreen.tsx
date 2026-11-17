@@ -58,8 +58,11 @@ export default function HomeScreen({ navigation }: Props) {
           <Card tone="black" style={{ paddingVertical: spacing.xxl }}>
             <Text style={styles.cardLabel}>Cash balance</Text>
             <BigMoney amount={account.available} color={colors.white} />
-            {account.held !== '0.00' && (
-              <Text style={styles.held}>{formatMoney(account.held)} on hold</Text>
+            {Number(account.held) - Number(account.restricted) > 0 && (
+              <Text style={styles.held}>{formatMoney((Number(account.held) - Number(account.restricted)).toFixed(2))} on hold</Text>
+            )}
+            {Number(account.restricted) > 0 && (
+              <Text style={styles.held}>{formatMoney(account.restricted)} restricted until you verify more</Text>
             )}
           </Card>
 
@@ -78,7 +81,7 @@ export default function HomeScreen({ navigation }: Props) {
             </Card>
           )}
 
-          {kyc && kyc.kycTier === 0 && kyc.status !== 'verified' && (
+          {kyc && kyc.kycTier < 3 && (
             <Button title="Verify identity" variant="secondary" onPress={() => navigation.navigate('Kyc')} />
           )}
 

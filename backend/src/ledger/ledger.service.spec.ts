@@ -193,10 +193,15 @@ describe('LedgerService', () => {
     const POOL = 'pool-1';
 
     /** Debit-normal balance: debits minus credits. */
-    function poolDelta(entries: Array<{ accountId: string; direction: string; amount: string }>): bigint {
+    function poolDelta(
+      entries: Array<{ accountId: string; direction: string; amount: string }>,
+    ): bigint {
       return entries
         .filter((e) => e.accountId === POOL)
-        .reduce((acc, e) => acc + (e.direction === 'debit' ? BigInt(e.amount) : -BigInt(e.amount)), 0n);
+        .reduce(
+          (acc, e) => acc + (e.direction === 'debit' ? BigInt(e.amount) : -BigInt(e.amount)),
+          0n,
+        );
     }
 
     it('accepts the first inbound credit on a fresh database and grows the pool', async () => {
@@ -215,11 +220,15 @@ describe('LedgerService', () => {
         ],
       });
 
-      const posted: Array<{ accountId: string; direction: string; amount: string }> = manager.savedEntries;
+      const posted: Array<{ accountId: string; direction: string; amount: string }> =
+        manager.savedEntries;
       expect(poolDelta(posted)).toBe(25000n);
       const walletNet = posted
         .filter((e) => e.accountId === 'wallet-1')
-        .reduce((acc, e) => acc + (e.direction === 'credit' ? BigInt(e.amount) : -BigInt(e.amount)), 0n);
+        .reduce(
+          (acc, e) => acc + (e.direction === 'credit' ? BigInt(e.amount) : -BigInt(e.amount)),
+          0n,
+        );
       expect(walletNet).toBe(25000n);
     });
 

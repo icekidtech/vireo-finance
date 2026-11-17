@@ -61,6 +61,10 @@ export class SubmitRegistrationDto {
   @Length(7, 12)
   cacNumber: string;
 
+  /** The uploaded CAC certificate (POST /documents with kind=cac_certificate). */
+  @IsUUID()
+  certificateDocumentId: string;
+
   @IsOptional()
   @IsString()
   @Length(8, 20)

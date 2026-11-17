@@ -43,6 +43,8 @@ export interface AppConfig {
   };
   risk: {
     tierDailyLimits: Record<number, bigint>;
+    /** Wallet balance cap per KYC tier (minor units); 0 means no cap. */
+    tierMaxBalance: Record<number, bigint>;
     singleTransferLimit: bigint;
     newPayeeLimit: bigint;
     velocityCount: number;
@@ -83,6 +85,8 @@ export interface AppConfig {
     provider: string;
     /** Base64 AES-256 key that encrypts stored BVNs (also keys the BVN uniqueness hash). */
     encryptionKey: string;
+    /** Minimum 0-100 face similarity for selfie-to-ID matching. */
+    minFaceMatch: number;
   };
   notifications: {
     sms?: {
@@ -161,6 +165,12 @@ export default (): AppConfig => ({
       2: BigInt(process.env.RISK_TIER2_DAILY_LIMIT ?? '20000000'),
       3: BigInt(process.env.RISK_TIER3_DAILY_LIMIT ?? '500000000'),
     },
+    tierMaxBalance: {
+      0: BigInt(process.env.RISK_TIER0_MAX_BALANCE ?? '5000000'),
+      1: BigInt(process.env.RISK_TIER1_MAX_BALANCE ?? '30000000'),
+      2: BigInt(process.env.RISK_TIER2_MAX_BALANCE ?? '50000000'),
+      3: BigInt(process.env.RISK_TIER3_MAX_BALANCE ?? '0'),
+    },
     singleTransferLimit: BigInt(process.env.RISK_SINGLE_TRANSFER_LIMIT ?? '10000000'),
     newPayeeLimit: BigInt(process.env.RISK_NEW_PAYEE_LIMIT ?? '5000000'),
     velocityCount: int(process.env.RISK_VELOCITY_COUNT, 10),
@@ -184,6 +194,7 @@ export default (): AppConfig => ({
   kyc: {
     provider: (process.env.KYC_PROVIDER ?? '').trim().toLowerCase(),
     encryptionKey: process.env.KYC_ENCRYPTION_KEY ?? '',
+    minFaceMatch: parseInt(process.env.BIOMETRIC_MIN_MATCH_SCORE ?? '75', 10),
   },
   biometrics: {
     provider: (process.env.BIOMETRIC_PROVIDER ?? '').trim().toLowerCase(),

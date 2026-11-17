@@ -20,6 +20,8 @@ export interface MyAccount {
   balance: string;
   held: string;
   available: string;
+  /** Part of the balance held back until more identity verification is done. */
+  restricted: string;
   virtualAccount: { accountNumber: string; bankName: string; status: string } | null;
 }
 
@@ -180,6 +182,7 @@ export interface AdminMerchant {
   kybStatus: string;
   registrationStatus?: string;
   cacNumber?: string | null;
+  cacDocumentId?: string | null;
   status: string;
   createdAt: string;
 }

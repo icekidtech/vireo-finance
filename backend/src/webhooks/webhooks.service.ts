@@ -1,11 +1,12 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
+import { BalanceCapService } from '../risk/balance-cap.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { VirtualAccount } from '../accounts/virtual-account.entity';
 import { SYSTEM_PAGA_POOL_ACCOUNT_ID } from '../common/constants';
 import { LedgerDirection, LedgerTransactionType, PagaEventStatus } from '../common/enums';
 import { sha256Hex } from '../common/crypto';
-import { parseAmountToMinor } from '../database/money';
+import { formatMinor, parseAmountToMinor } from '../database/money';
 import { LedgerService } from '../ledger/ledger.service';
 import { MerchantService } from '../merchant/merchant.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -25,6 +26,7 @@ export class WebhooksService {
     private readonly notifications: NotificationsService,
     private readonly transfers: TransfersService,
     private readonly merchants: MerchantService,
+    @Optional() private readonly caps?: BalanceCapService,
   ) {}
 
   async handle(headers: IncomingHeaders, rawBody: string, body: Record<string, unknown>) {
@@ -126,7 +128,26 @@ export class WebhooksService {
     });
 
     await this.notifications.creditReceived(virtualAccount.userId, amount);
+    await this.applyBalanceCap(virtualAccount.userId);
     return { credited: true };
+  }
+
+  /** Money above the tier's balance cap is accepted but restricted; tell the user why. */
+  private async applyBalanceCap(userId: string): Promise<void> {
+    if (!this.caps) return;
+    try {
+      const restricted = await this.caps.reconcile(userId);
+      if (restricted > 0n) {
+        await this.notifications.send(
+          userId,
+          'Part of your balance is restricted',
+          `NGN ${formatMinor(restricted)} is held until you verify more of your identity. Open Verify identity to raise your limit.`,
+        );
+      }
+    } catch (error) {
+      // The credit already posted; a failed restriction is logged and retried on the next credit.
+      this.logger.error(`Balance cap check failed for ${userId}: ${String(error)}`);
+    }
   }
 
   private async processPayoutUpdate(

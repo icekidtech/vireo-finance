@@ -26,6 +26,10 @@ export class Merchant {
   @Column({ type: 'varchar', length: 20, nullable: true })
   tin: string | null;
 
+  /** The uploaded CAC certificate (a document id), for staff review. */
+  @Column({ type: 'uuid', nullable: true })
+  cacDocumentId: string | null;
+
   /** none -> pending (submitted) -> verified | rejected, decided by a reviewer. */
   @Column({ type: 'varchar', length: 20, default: 'none' })
   registrationStatus: string;

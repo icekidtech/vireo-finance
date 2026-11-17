@@ -5,7 +5,7 @@ import { errorMessage, formatRelative } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
 import type { RootStackParamList } from '../navigation';
 import { Avatar, Button, Empty, ErrorBanner, Header, ListRow, Loading, Screen, SegmentedControl, StatusPill } from '../components/ui';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { spacing } from '../theme';
 import { showAlert } from '../lib/dialog';
 
@@ -49,12 +49,15 @@ export default function AdminScreen({ navigation }: Props) {
       { text: 'Reject', style: 'destructive', onPress: () => run(() => api.verifyKyb(id, 'rejected'), merchants.refresh) },
     ]);
 
-  const reviewRegistration = (id: string, name: string, cac: string | null) =>
+  const reviewRegistration = (id: string, name: string, cac: string | null, documentId?: string | null) =>
     showAlert(
       `Review ${name}`,
-      `CAC number ${cac ?? '—'}. Confirm the business and its status on the CAC public search before verifying.`,
+      `CAC number ${cac ?? '—'}. Open the certificate, then confirm the business and its status on the CAC public search before verifying.`,
       [
         { text: 'Cancel', style: 'cancel' },
+        ...(documentId && Platform.OS === 'web'
+          ? [{ text: 'View certificate', onPress: () => { void api.viewDocument(documentId).catch((e) => setActionError(errorMessage(e, 'Could not open the certificate'))); } }]
+          : []),
         { text: 'Verify registration', onPress: () => run(() => api.reviewRegistration(id, 'verified'), merchants.refresh) },
         { text: 'Reject', style: 'destructive', onPress: () => run(() => api.reviewRegistration(id, 'rejected'), merchants.refresh) },
       ],
@@ -101,7 +104,7 @@ export default function AdminScreen({ navigation }: Props) {
               m.kybStatus === 'pending' ? (
                 <Button title="Review" small variant="secondary" onPress={() => reviewKyb(m.id, m.businessName)} />
               ) : m.registrationStatus === 'pending' ? (
-                <Button title="Review CAC" small variant="secondary" onPress={() => reviewRegistration(m.id, m.businessName, m.cacNumber ?? null)} />
+                <Button title="Review CAC" small variant="secondary" onPress={() => reviewRegistration(m.id, m.businessName, m.cacNumber ?? null, m.cacDocumentId)} />
               ) : undefined
             }
           />

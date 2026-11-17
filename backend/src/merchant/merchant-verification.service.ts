@@ -1,9 +1,11 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -18,6 +20,9 @@ import {
   DEFAULT_CASHOUT_LIMITS,
   TIN_PATTERN,
 } from '../kyc/tiers';
+import { DocumentsService } from '../documents/documents.service';
+import { IDENTITY_VERIFIER, IdentityVerifier } from '../kyc/identity-verifier';
+import { businessNameSimilarity, nameMatches } from '../kyc/names';
 import { Merchant } from './merchant.entity';
 
 export type VerificationReason =
@@ -44,6 +49,8 @@ export class MerchantVerificationService {
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(KycIdentity) private readonly identities: Repository<KycIdentity>,
     private readonly config: ConfigService,
+    @Optional() private readonly documents?: DocumentsService,
+    @Optional() @Inject(IDENTITY_VERIFIER) private readonly verifier?: IdentityVerifier | null,
   ) {}
 
   /** Daily cash-out cap for a business level (minor units). Level 0 cannot cash out. */
@@ -74,8 +81,17 @@ export class MerchantVerificationService {
     };
   }
 
-  /** Level 2: the owner submits the CAC number (and TIN) for a reviewer to confirm against the CAC register. */
-  async submitRegistration(userId: string, input: { cacNumber: string; tin?: string }) {
+  /**
+   * Level 2: the owner submits the CAC number and certificate. If the company
+   * registry confirms an active company with that number and a matching name,
+   * the registration is verified immediately. Anything else (no match, an
+   * unreachable registry, a company the registry does not cover) goes to a
+   * person, who sees the certificate and decides.
+   */
+  async submitRegistration(
+    userId: string,
+    input: { cacNumber: string; tin?: string; certificateDocumentId: string },
+  ) {
     const merchant = await this.merchants.findOne({ where: { ownerUserId: userId } });
     if (!merchant) throw new NotFoundException('Merchant profile not found');
     if (merchant.kybStatus !== 'verified') {
@@ -95,11 +111,39 @@ export class MerchantVerificationService {
     if (tin && !TIN_PATTERN.test(tin)) {
       throw new BadRequestException('TIN must be 8 to 14 digits');
     }
+    if (!this.documents) throw new BadRequestException('Document upload is not available yet');
+    await this.documents.assertOwned(userId, input.certificateDocumentId, ['cac_certificate']);
+
     merchant.cacNumber = cacNumber;
     merchant.tin = tin;
-    merchant.registrationStatus = 'pending';
+    merchant.cacDocumentId = input.certificateDocumentId;
+    merchant.registrationStatus = (await this.registryConfirms(merchant, cacNumber))
+      ? 'verified'
+      : 'pending';
     await this.merchants.save(merchant);
+    if (merchant.registrationStatus === 'verified') {
+      this.logger.log(`Merchant ${merchant.id} registration verified against the company registry`);
+    }
     return this.getLevels(userId);
+  }
+
+  /** True only for an exact registration number, an active company and a matching business name. */
+  private async registryConfirms(merchant: Merchant, cacNumber: string): Promise<boolean> {
+    if (!this.verifier) return false;
+    const digits = cacNumber.replace(/^[A-Z]+/, '');
+    try {
+      const companies = await this.verifier.searchCompany(digits);
+      return companies.some(
+        (c) =>
+          c.registrationNumber.replace(/\D/g, '') === digits &&
+          c.status === 'active' &&
+          businessNameSimilarity(merchant.businessName, c.name) >= 0.6,
+      );
+    } catch (error) {
+      // The registry is a shortcut, not a gate: fall back to a person reviewing it.
+      this.logger.warn(`Registry lookup unavailable for merchant ${merchant.id}: ${String(error)}`);
+      return false;
+    }
   }
 
   /** Reviewer decision on a submitted registration (admin only, enforced by the controller). */
@@ -146,25 +190,4 @@ export class MerchantVerificationService {
   }
 }
 
-function tokens(value: string): string[] {
-  return value
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z\s]/g, ' ')
-    .split(/\s+/)
-    .filter(Boolean);
-}
-
-/** Both the first and the last name from the BVN record must appear in the account name, in any order. */
-export function nameMatches(accountName: string, firstName: string, lastName: string): boolean {
-  const account = new Set(tokens(accountName));
-  const first = tokens(firstName);
-  const last = tokens(lastName);
-  return (
-    first.length > 0 &&
-    last.length > 0 &&
-    first.every((t) => account.has(t)) &&
-    last.every((t) => account.has(t))
-  );
-}
+export { nameMatches } from '../kyc/names';

@@ -1,29 +1,31 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { BVN_VERIFIER, BvnVerifier } from './bvn-verifier';
-import { DiditBvnVerifier } from './didit-bvn.verifier';
+import { DocumentsModule } from '../documents/documents.module';
+import { RiskModule } from '../risk/risk.module';
+import { User } from '../users/user.entity';
+import { DiditIdentityVerifier } from './didit-identity.verifier';
+import { IDENTITY_VERIFIER, IdentityVerifier } from './identity-verifier';
 import { KycIdentity } from './kyc-identity.entity';
 import { KycRecord } from './kyc-record.entity';
 import { KycController } from './kyc.controller';
 import { KycService } from './kyc.service';
-import { User } from '../users/user.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([KycRecord, KycIdentity, User])],
+  imports: [TypeOrmModule.forFeature([KycRecord, KycIdentity, User]), DocumentsModule, RiskModule],
   controllers: [KycController],
   providers: [
     KycService,
     {
-      provide: BVN_VERIFIER,
+      provide: IDENTITY_VERIFIER,
       inject: [ConfigService],
-      // KYC_PROVIDER unset disables automatic BVN checks (the endpoint answers
-      // 503); an unknown name stops the app at startup instead of faking a result.
-      useFactory: (config: ConfigService): BvnVerifier | null => {
+      // KYC_PROVIDER unset disables automatic verification (the endpoints answer 503);
+      // an unknown name stops the app at startup instead of faking a result.
+      useFactory: (config: ConfigService): IdentityVerifier | null => {
         const name = config.get<string>('kyc.provider');
         if (!name) return null;
         if (name === 'didit') {
-          return new DiditBvnVerifier(
+          return new DiditIdentityVerifier(
             config.getOrThrow<{ apiKey: string; baseUrl: string; timeoutMs: number }>(
               'biometrics.didit',
             ),
@@ -33,6 +35,6 @@ import { User } from '../users/user.entity';
       },
     },
   ],
-  exports: [KycService],
+  exports: [KycService, IDENTITY_VERIFIER],
 })
 export class KycModule {}

@@ -3,7 +3,13 @@ import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-use
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { KycService } from './kyc.service';
-import { SubmitKycDto, VerifyBvnDto, VerifyKycDto } from './kyc.dto';
+import {
+  SubmitKycDto,
+  VerifyBvnDto,
+  VerifyKycDto,
+  VerifyTier2Dto,
+  VerifyTier3Dto,
+} from './kyc.dto';
 
 @Controller('kyc')
 export class KycController {
@@ -19,6 +25,18 @@ export class KycController {
   @Post('bvn')
   verifyBvn(@CurrentUser() user: AuthenticatedUser, @Body() dto: VerifyBvnDto) {
     return this.kyc.verifyBvn(user.userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('nin')
+  verifyNin(@CurrentUser() user: AuthenticatedUser, @Body() dto: VerifyTier2Dto) {
+    return this.kyc.verifyNinAndId(user.userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('address')
+  verifyAddress(@CurrentUser() user: AuthenticatedUser, @Body() dto: VerifyTier3Dto) {
+    return this.kyc.verifyAddress(user.userId, dto);
   }
 
   @UseGuards(JwtAuthGuard)

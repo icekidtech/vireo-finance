@@ -148,4 +148,29 @@ describe('validateEnv', () => {
       ).not.toThrow();
     });
   });
+
+  describe('document storage', () => {
+    const base = {
+      JWT_SECRET: secret,
+      DOCUMENT_STORAGE: 'b2',
+      B2_KEY_ID: 'k',
+      B2_APPLICATION_KEY: 'a',
+      B2_BUCKET_ID: 'i',
+      B2_BUCKET_NAME: 'n',
+    };
+    it('needs its own 32-byte key and the bucket details', () => {
+      expect(() => validateEnv(base)).toThrow(/DOCUMENT_ENCRYPTION_KEY/);
+      const key = randomBytes(32).toString('base64');
+      expect(() => validateEnv({ ...base, DOCUMENT_ENCRYPTION_KEY: key })).not.toThrow();
+      expect(() =>
+        validateEnv({ ...base, DOCUMENT_ENCRYPTION_KEY: key, B2_BUCKET_ID: '' }),
+      ).toThrow(/B2_BUCKET_ID/);
+    });
+    it('must not reuse another encryption key', () => {
+      const key = randomBytes(32).toString('base64');
+      expect(() =>
+        validateEnv({ ...base, DOCUMENT_ENCRYPTION_KEY: key, KYC_ENCRYPTION_KEY: key }),
+      ).toThrow(/must differ/);
+    });
+  });
 });

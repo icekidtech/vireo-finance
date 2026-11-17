@@ -42,6 +42,23 @@ export class AccountsService {
     return manager ? work(manager) : this.dataSource.transaction(work);
   }
 
+  /** The user who owns a personal wallet account, or null for any other account. */
+  async walletOwner(accountId: string): Promise<string | null> {
+    const account = await this.accounts.findOne({ where: { id: accountId } });
+    return account && account.ownerType === AccountOwnerType.USER ? account.ownerId : null;
+  }
+
+  /** Money held back by the tier balance cap (see BalanceCapService). */
+  async restrictedFor(walletId: string): Promise<bigint> {
+    const rows = await this.dataSource.query(
+      `SELECT COALESCE(SUM("amount"), 0)::text AS "restricted"
+       FROM "holds"
+       WHERE "accountId" = $1 AND "status" = 'active' AND "reference" LIKE 'kyc-cap:%'`,
+      [walletId],
+    );
+    return BigInt(rows[0]?.restricted ?? '0');
+  }
+
   async getWallet(userId: string): Promise<Account> {
     const account = await this.accounts.findOne({
       where: {

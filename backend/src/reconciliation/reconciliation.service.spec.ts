@@ -131,8 +131,18 @@ describe('ReconciliationService', () => {
     });
 
     it('continues the sweep when one transfer lookup fails', async () => {
-      const bad = { id: 'bad', pagaReference: 'ref-bad', status: TransferStatus.PENDING, type: TransferType.BANK };
-      const good = { id: 'good', pagaReference: 'ref-good', status: TransferStatus.PENDING, type: TransferType.BANK };
+      const bad = {
+        id: 'bad',
+        pagaReference: 'ref-bad',
+        status: TransferStatus.PENDING,
+        type: TransferType.BANK,
+      };
+      const good = {
+        id: 'good',
+        pagaReference: 'ref-good',
+        status: TransferStatus.PENDING,
+        type: TransferType.BANK,
+      };
       transfersRepo.find.mockResolvedValue([bad, good]);
       pagaService.getOperationStatus
         .mockRejectedValueOnce(new Error('network down'))

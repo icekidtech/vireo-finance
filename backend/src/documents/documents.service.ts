@@ -188,6 +188,16 @@ export class DocumentsService {
     return { bytes: await this.decrypt(doc), mime: doc.mime };
   }
 
+  /** Confirms a document exists, belongs to this user and is one of the expected kinds (no download). */
+  async assertOwned(userId: string, documentId: string, kinds: DocumentKind[]): Promise<void> {
+    const doc = await this.documents.findOne({
+      where: { id: documentId, ownerUserId: userId, deletedAt: IsNull() },
+    });
+    if (!doc || !kinds.includes(doc.kind as DocumentKind)) {
+      throw new BadRequestException('That document is not available. Upload it again.');
+    }
+  }
+
   async remove(userId: string, documentId: string): Promise<void> {
     const doc = await this.documents.findOne({
       where: { id: documentId, ownerUserId: userId, deletedAt: IsNull() },
