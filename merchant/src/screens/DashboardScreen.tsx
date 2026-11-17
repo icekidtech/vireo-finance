@@ -85,6 +85,12 @@ export default function DashboardScreen({ navigation }: Props) {
               onPress={() => navigation.navigate('Charge')}
             />
             <Button
+              title="Receive"
+              variant="secondary"
+              style={{ flex: 1 }}
+              onPress={() => navigation.navigate('Receive')}
+            />
+            <Button
               title="Cash out"
               variant="secondary"
               style={{ flex: 1 }}

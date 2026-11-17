@@ -17,6 +17,7 @@ export type RootStackParamList = {
   Tabs: NavigatorScreenParams<TabParamList>;
   OrderDetail: { reference: string };
   Settle: undefined;
+  Receive: undefined;
   Devices: undefined;
   EditBusiness: undefined;
   BiometricPayment: { orderReference: string; amount: string };

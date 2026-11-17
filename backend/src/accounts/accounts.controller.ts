@@ -17,7 +17,7 @@ export class AccountsController {
   async me(@CurrentUser() user: AuthenticatedUser) {
     const wallet = await this.accounts.getWallet(user.userId);
     const balance = await this.ledger.getBalance(wallet.id);
-    const virtualAccount = await this.accounts.getVirtualAccount(user.userId);
+    const virtualAccount = await this.accounts.getVirtualAccountForAccount(wallet.id);
     return {
       accountId: wallet.id,
       currency: wallet.currency,

@@ -9,6 +9,7 @@ import { LedgerModule } from '../ledger/ledger.module';
 import { PagaModule } from '../paga/paga.module';
 import { TransfersModule } from '../transfers/transfers.module';
 import { MerchantOrderController } from './merchant-order.controller';
+import { MerchantDepositService } from './merchant-deposit.service';
 import { MerchantController } from './merchant.controller';
 import { MerchantOrder } from './merchant-order.entity';
 import { Merchant } from './merchant.entity';
@@ -28,7 +29,7 @@ import { User } from '../users/user.entity';
     BiometricsModule,
   ],
   controllers: [MerchantController, MerchantOrderController],
-  providers: [MerchantService, TerminalPaymentService],
+  providers: [MerchantService, TerminalPaymentService, MerchantDepositService],
   exports: [MerchantService],
 })
 export class MerchantModule {}

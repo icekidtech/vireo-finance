@@ -97,7 +97,8 @@ export class AccountsService {
     );
   }
 
-  async getVirtualAccount(userId: string): Promise<VirtualAccount | null> {
-    return this.virtualAccounts.findOne({ where: { userId, status: 'active' } });
+  /** The deposit account that credits one specific ledger account (a wallet or a merchant balance). */
+  async getVirtualAccountForAccount(accountId: string): Promise<VirtualAccount | null> {
+    return this.virtualAccounts.findOne({ where: { accountId, status: 'active' } });
   }
 }

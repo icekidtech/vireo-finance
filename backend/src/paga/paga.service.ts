@@ -42,8 +42,9 @@ export class PagaService {
   constructor(private readonly config: ConfigService) {}
 
   async createVirtualAccount(input: CreateVirtualAccountInput): Promise<VirtualAccountResult> {
-    const referenceNumber = `va_${input.userId}`;
-    const accountReference = toAccountReference(input.userId);
+    const referenceId = input.referenceId ?? input.userId;
+    const referenceNumber = `va_${referenceId}`;
+    const accountReference = toAccountReference(referenceId);
     const { firstName, lastName } = splitName(input.name);
     const callbackUrl = this.callbackUrl();
 

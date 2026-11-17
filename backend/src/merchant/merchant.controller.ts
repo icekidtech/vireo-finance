@@ -12,6 +12,7 @@ import {
 } from './dto/merchant.dto';
 import { CreateTerminalPaymentDto } from './dto/terminal-payment.dto';
 import { TerminalPaymentService } from './terminal-payment.service';
+import { MerchantDepositService } from './merchant-deposit.service';
 import { MerchantService } from './merchant.service';
 
 @UseGuards(JwtAuthGuard)
@@ -20,6 +21,7 @@ export class MerchantController {
   constructor(
     private readonly merchants: MerchantService,
     private readonly terminal: TerminalPaymentService,
+    private readonly deposits: MerchantDepositService,
   ) {}
 
   @UseGuards(JwtAuthGuard, AdminGuard)
@@ -42,6 +44,12 @@ export class MerchantController {
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.merchants.getProfile(user.userId);
+  }
+
+  /** Bank account customers can transfer to; credited to the merchant balance. */
+  @Get('me/deposit-account')
+  depositAccount(@CurrentUser() user: AuthenticatedUser) {
+    return this.deposits.getDepositAccount(user.userId);
   }
 
   @Patch('me')

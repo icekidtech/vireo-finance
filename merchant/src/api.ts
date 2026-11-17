@@ -115,6 +115,14 @@ export class VireoApi {
     return data;
   }
 
+  /** Bank account customers can transfer to; credited to the merchant balance. */
+  async getDepositAccount() {
+    const { data } = await this.client.get<{ bankName: string; accountNumber: string; accountName: string }>(
+      '/merchants/me/deposit-account',
+    );
+    return data;
+  }
+
   async listBanks() {
     const { data } = await this.client.get<{ code: string; name: string }[]>('/transfers/banks');
     return data;
