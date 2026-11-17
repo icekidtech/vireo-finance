@@ -121,6 +121,23 @@ export class VireoApi {
   }
 
   /** Bank account customers can transfer to; credited to the merchant balance. */
+  /* ── Transaction PIN ── */
+
+  async getPinStatus() {
+    const { data } = await this.client.get<{ set: boolean; locked: boolean; lockedUntil: string | null }>('/pin/status');
+    return data;
+  }
+
+  /** Sets a PIN, or changes it (then `currentPin` is required). */
+  async setPin(pin: string, currentPin?: string) {
+    await this.client.post('/pin', { pin, ...(currentPin ? { currentPin } : {}) });
+  }
+
+  /** Forgotten PIN: needs a fresh SMS code (request it with requestOtp). */
+  async resetPin(code: string, pin: string) {
+    await this.client.post('/pin/reset', { code, pin });
+  }
+
   async getDepositAccount() {
     const { data } = await this.client.get<{ bankName: string; accountNumber: string; accountName: string }>(
       '/merchants/me/deposit-account',
@@ -261,10 +278,15 @@ export class VireoApi {
     return data;
   }
 
-  async submitSettlement(settlementId: string, signature: string) {
+  /** `confirmation.pin` is sent only when the owner approved with their PIN instead of biometrics. */
+  async submitSettlement(
+    settlementId: string,
+    signature: string,
+    confirmation: { approval: 'biometric' | 'pin'; pin?: string } = { approval: 'biometric' },
+  ) {
     const { data } = await this.client.post<Settlement>(
       `/merchants/settlements/${settlementId}/submit`,
-      { signature },
+      { signature, ...confirmation },
     );
     return data;
   }

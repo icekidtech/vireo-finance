@@ -7,9 +7,10 @@ import { api } from '../api';
 import { errorMessage } from '../lib/format';
 import { AuthLayout, Button, ErrorBanner, Field, Screen } from '../components/ui';
 import BankAccountFields, { type BankAccountValue } from '../components/BankAccountFields';
+import PinSetup from '../components/PinSetup';
 import { colors, spacing, type } from '../theme';
 
-type Stage = 'welcome' | 'account' | 'otp' | 'business';
+type Stage = 'welcome' | 'account' | 'otp' | 'business' | 'pin';
 
 export default function OnboardScreen({ navigation, route }: StackScreenProps<RootStackParamList, 'Onboard'>) {
   const { login } = useAuth();
@@ -23,6 +24,7 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
   const [lastName, setLastName] = useState('');
   const [code, setCode] = useState('');
   const [token, setToken] = useState('');
+  const [profile, setProfile] = useState<Awaited<ReturnType<typeof api.getProfile>> | null>(null);
   const [businessName, setBusinessName] = useState('');
   const [handle, setHandle] = useState('');
   const [bankAccount, setBankAccount] = useState<BankAccountValue | null>(null);
@@ -88,7 +90,9 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
           ? { settlementBankCode: bankAccount.bankCode!, settlementAccountNumber: bankAccount.accountNumber }
           : {}),
       });
-      login(token, await api.getProfile());
+      // The business exists now; choose a PIN before entering the dashboard.
+      setProfile(await api.getProfile());
+      setStage('pin');
     }, 'Could not set up your business');
 
   const back = () => {
@@ -131,7 +135,7 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
   }
 
   return (
-    <AuthLayout onBack={stage === 'business' ? undefined : back}>
+    <AuthLayout onBack={stage === 'business' || stage === 'pin' ? undefined : back}>
           <ErrorBanner message={error} />
 
           {stage === 'account' && (
@@ -161,6 +165,14 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
               <Button title="Verify" loading={loading} disabled={code.length !== 6} onPress={onVerify} />
               <Button title="Resend code" variant="ghost" onPress={() => guard(sendCode, 'Could not resend')} />
             </>
+          )}
+
+          {stage === 'pin' && profile && (
+            <PinSetup
+              title="Create your PIN"
+              onDone={() => login(token, profile)}
+              onSkip={() => login(token, profile)}
+            />
           )}
 
           {stage === 'business' && (

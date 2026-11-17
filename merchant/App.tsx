@@ -17,6 +17,7 @@ import OrderDetailScreen from './src/screens/OrderDetailScreen';
 import SettleScreen from './src/screens/SettleScreen';
 import ReceiveScreen from './src/screens/ReceiveScreen';
 import VerifyScreen from './src/screens/VerifyScreen';
+import PinScreen from './src/screens/PinScreen';
 import DevicesScreen from './src/screens/DevicesScreen';
 import EditBusinessScreen from './src/screens/EditBusinessScreen';
 import BiometricPaymentScreen from './src/screens/BiometricPaymentScreen';
@@ -98,6 +99,7 @@ function AppNavigator() {
             <Stack.Screen name="Settle" component={SettleScreen} />
             <Stack.Screen name="Receive" component={ReceiveScreen} />
             <Stack.Screen name="Verify" component={VerifyScreen} />
+            <Stack.Screen name="Pin" component={PinScreen} />
             <Stack.Screen name="Devices" component={DevicesScreen} />
             <Stack.Screen name="EditBusiness" component={EditBusinessScreen} />
             <Stack.Screen name="BiometricPayment" component={BiometricPaymentScreen} />

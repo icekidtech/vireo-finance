@@ -54,6 +54,16 @@ export class SubmitSettlementDto {
   @IsString()
   @Length(1, 512)
   signature: string;
+
+  /** How the owner confirmed on their phone. `pin` needs the PIN below. Defaults to biometric. */
+  @IsOptional()
+  @IsIn(['biometric', 'pin'])
+  approval?: 'biometric' | 'pin';
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}$/, { message: 'pin must be 4 digits' })
+  pin?: string;
 }
 
 export class SubmitRegistrationDto {

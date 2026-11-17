@@ -17,6 +17,7 @@ type Props = CompositeScreenProps<
 
 export default function AccountScreen({ navigation }: Props) {
   const { user, logout } = useAuth();
+  const pin = useLoad(() => api.getPinStatus(), 'Could not load your PIN status');
   const { data: merchant, loading, error, refreshing, refresh } = useLoad(
     () => api.getMerchantProfile(),
     'Could not load your business',
@@ -59,6 +60,12 @@ export default function AccountScreen({ navigation }: Props) {
 
       <SectionTitle>Security</SectionTitle>
       <Card style={{ paddingVertical: spacing.sm }}>
+        <ListRow
+          title="Transaction PIN"
+          subtitle={pin.data?.set ? 'Change or reset your 4-digit PIN' : 'Set a PIN to confirm cash outs without biometrics'}
+          trailing={pin.data ? <StatusPill status={pin.data.set ? 'set' : 'not_set'} /> : '›'}
+          onPress={() => navigation.navigate('Pin')}
+        />
         <ListRow
           title="Signing devices"
           subtitle="Phones allowed to approve payouts"

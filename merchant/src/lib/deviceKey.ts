@@ -66,6 +66,28 @@ export async function getDeviceId(): Promise<string | null> {
   return storage.getItem(DEVICE_ID_STORE);
 }
 
+/** Whether this phone can confirm a payout with fingerprint / face. */
+export async function biometricAvailable(): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
+  try {
+    return (await LocalAuthentication.hasHardwareAsync()) && (await LocalAuthentication.isEnrolledAsync());
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Signs the challenge with this phone's key WITHOUT a biometric prompt. Only
+ * for the PIN path: the caller must send the PIN too, which the server checks.
+ */
+export async function signWithoutBiometric(payloadHash: string): Promise<string> {
+  const privateKeyHex = await storage.getItem(PRIVATE_KEY_STORE);
+  if (!privateKeyHex) {
+    throw new Error('No device key on this phone. Register this device first.');
+  }
+  return bytesToBase64(ed25519.sign(asciiBytes(payloadHash), hexToBytes(privateKeyHex)));
+}
+
 /**
  * Asks for the phone's biometric, then signs the challenge. The server signs
  * nothing itself: it hands us `payloadHash` and we sign those exact bytes, so

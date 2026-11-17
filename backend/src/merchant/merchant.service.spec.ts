@@ -487,3 +487,30 @@ describe('MerchantService.verifyKyb', () => {
     await expect(service.verifyKyb('missing', 'verified')).rejects.toThrow(NotFoundException);
   });
 });
+
+describe('MerchantService.submitSettlement PIN confirmation', () => {
+  it('checks the PIN before the payout is touched, and a wrong PIN stops it', async () => {
+    const { service, spies, settlementsRepo } = makeService({});
+    const settlement = await settlementsRepo.findOne();
+    const pins = {
+      verify: jest.fn(async () => {
+        throw new Error('Wrong PIN. 4 attempts left.');
+      }),
+    };
+    (service as any).pins = pins;
+    await expect(
+      service.submitSettlement('user-1', settlement.id, 'sig', { approval: 'pin', pin: '1111' }),
+    ).rejects.toThrow('Wrong PIN');
+    expect(pins.verify).toHaveBeenCalledWith('user-1', '1111');
+    expect(spies.consume).not.toHaveBeenCalled();
+  });
+
+  it('does not ask for a PIN on the biometric path', async () => {
+    const { service, settlementsRepo } = makeService({});
+    const settlement = await settlementsRepo.findOne();
+    const pins = { verify: jest.fn() };
+    (service as any).pins = pins;
+    await service.submitSettlement('user-1', settlement.id, 'sig').catch(() => undefined);
+    expect(pins.verify).not.toHaveBeenCalled();
+  });
+});

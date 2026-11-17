@@ -27,6 +27,7 @@ import { formatMinor, parseAmountToMinor, assertPositive } from '../database/mon
 import { Hold } from '../ledger/hold.entity';
 import { LedgerService } from '../ledger/ledger.service';
 import { PagaService } from '../paga/paga.service';
+import { PinService } from '../pin/pin.service';
 import {
   CreateOrderDto,
   CreateSettlementDraftDto,
@@ -54,6 +55,7 @@ export class MerchantService {
     private readonly challenges: ChallengesService,
     private readonly paga: PagaService,
     @Optional() private readonly config?: ConfigService,
+    @Optional() private readonly pins?: PinService,
   ) {}
 
   async onboard(userId: string, dto: OnboardMerchantDto) {
@@ -406,8 +408,26 @@ export class MerchantService {
     return { settlement: presentSettlement(settlement), challenge: presentChallenge(challenge) };
   }
 
-  async submitSettlement(userId: string, settlementId: string, signature: string) {
+  async submitSettlement(
+    userId: string,
+    settlementId: string,
+    signature: string,
+    confirmation: { approval: 'biometric' | 'pin'; pin?: string } = { approval: 'biometric' },
+  ) {
     const merchant = await this.getByOwner(userId);
+
+    // A PIN confirmation is checked before the challenge is consumed or any money is touched,
+    // so a wrong PIN never uses up the payout's one-time signature.
+    if (confirmation.approval === 'pin') {
+      if (!this.pins) throw new BadRequestException('PIN confirmation is not available');
+      const existing = await this.settlements.findOne({ where: { id: settlementId } });
+      if (!existing || existing.merchantId !== merchant.id) {
+        throw new NotFoundException('Settlement not found');
+      }
+      if (existing.status === SettlementStatus.DRAFT) {
+        await this.pins.verify(userId, confirmation.pin ?? '');
+      }
+    }
 
     // Consume the signed challenge and move DRAFT -> PENDING atomically. Paga is
     // called only after the challenge is committed as used.

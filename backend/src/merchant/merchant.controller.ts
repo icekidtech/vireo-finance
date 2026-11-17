@@ -130,6 +130,9 @@ export class MerchantController {
     @Param('id') id: string,
     @Body() dto: SubmitSettlementDto,
   ) {
-    return this.merchants.submitSettlement(user.userId, id, dto.signature);
+    return this.merchants.submitSettlement(user.userId, id, dto.signature, {
+      approval: dto.approval ?? 'biometric',
+      pin: dto.pin,
+    });
   }
 }
