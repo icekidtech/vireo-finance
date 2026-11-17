@@ -106,6 +106,12 @@ export class PagaService {
       };
     } catch (error) {
       if (error instanceof PagaApiError) {
+        // 139 is OUR Paga wallet being short of funds (Paga prices the lookup against it):
+        // not the user's mistake, and not something to show them. Surfaces as a generic 502.
+        if (String(error.raw.responseCode) === '139') {
+          this.logger.error('Paga business wallet has insufficient balance for the account lookup');
+          throw new BadGatewayException('Paga business wallet is out of funds');
+        }
         throw new BadRequestException(error.message);
       }
       throw error;
@@ -347,7 +353,8 @@ export class PagaService {
 
   private async fetchBanks(): Promise<PagaBank[]> {
     const reference = newReference('banks');
-    const raw = await this.collect('banks', { referenceNumber: reference }, [reference]);
+    // The Business API's own bank list: its ids are the ones its transfer and account-lookup calls expect.
+    const raw = await this.business('getBanks', { referenceNumber: reference }, [reference]);
     const banks = Array.isArray(raw.banks)
       ? raw.banks
           .map((entry) => asRecord(entry))
