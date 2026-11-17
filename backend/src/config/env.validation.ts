@@ -19,8 +19,8 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     for (const key of REQUIRED_IN_PRODUCTION) {
       if (!config[key]) errors.push(`${key} is required in production`);
     }
-    if (config.OTP_ECHO_CODE === 'true' || config.OTP_ECHO_CODE === '1') {
-      errors.push('OTP_ECHO_CODE must not be enabled in production');
+    if (config.OTP_LOG_CODE === 'true' || config.OTP_LOG_CODE === '1') {
+      errors.push('OTP_LOG_CODE must not be enabled in production');
     }
   }
 

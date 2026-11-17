@@ -91,12 +91,13 @@ export class AuthService {
       }),
     );
 
-    // The code is echoed only when explicitly enabled for local development
-    // (OTP_ECHO_CODE); startup validation forbids it in production.
-    return {
-      expiresIn: ttl,
-      ...(this.config.get<boolean>('otp.echoCode') ? { devCode: code } : {}),
-    };
+    // Until an SMS gateway exists the code is written to the server log, only
+    // when OTP_LOG_CODE is set (startup validation forbids it in production).
+    // It is never returned in the API response.
+    if (this.config.get<boolean>('otp.logCode')) {
+      this.logger.warn(`OTP for ${phone}: ${code} (expires in ${ttl}s)`);
+    }
+    return { expiresIn: ttl };
   }
 
   async verifyOtp(phoneInput: string, code: string) {

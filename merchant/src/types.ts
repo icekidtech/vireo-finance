@@ -83,7 +83,6 @@ export interface Device {
 
 export interface OtpRequestResult {
   expiresIn: number;
-  devCode?: string;
 }
 
 export interface VerifyOtpResult {

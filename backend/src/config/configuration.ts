@@ -16,8 +16,8 @@ export interface AppConfig {
   };
   otp: {
     ttlSeconds: number;
-    /** Return the OTP in the API response. Local development only; off by default. */
-    echoCode: boolean;
+    /** Write each OTP to the server log until SMS delivery exists. Never enable in production. */
+    logCode: boolean;
   };
   challenge: {
     ttlSeconds: number;
@@ -95,7 +95,7 @@ export default (): AppConfig => ({
   },
   otp: {
     ttlSeconds: int(process.env.OTP_TTL_SECONDS, 300),
-    echoCode: bool(process.env.OTP_ECHO_CODE, false),
+    logCode: bool(process.env.OTP_LOG_CODE, false),
   },
   challenge: {
     ttlSeconds: int(process.env.CHALLENGE_TTL_SECONDS, 120),

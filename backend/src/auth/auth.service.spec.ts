@@ -152,25 +152,29 @@ describe('AuthService', () => {
   });
 
   describe('requestOtp', () => {
-    it('never returns the code unless OTP echo is explicitly enabled', async () => {
-      usersRepo.findOne.mockResolvedValue(mockUser);
-      otpsRepo.findOne.mockResolvedValue(null);
-
-      const result = await service.requestOtp('+2348012345678');
-
-      expect(result.expiresIn).toBe(300);
-      expect(result.devCode).toBeUndefined();
-    });
-
-    it('returns the code only when OTP echo is enabled for local development', async () => {
+    it('never returns the code in the API response', async () => {
       usersRepo.findOne.mockResolvedValue(mockUser);
       otpsRepo.findOne.mockResolvedValue(null);
       const base = configService.get;
-      configService.get = jest.fn((key: string) => (key === 'otp.echoCode' ? true : base(key)));
+      configService.get = jest.fn((key: string) => (key === 'otp.logCode' ? true : base(key)));
 
       const result = await service.requestOtp('+2348012345678');
 
-      expect(result.devCode).toHaveLength(6);
+      expect(result).toEqual({ expiresIn: 300 });
+    });
+
+    it('writes the code to the server log only when OTP_LOG_CODE is enabled', async () => {
+      usersRepo.findOne.mockResolvedValue(mockUser);
+      otpsRepo.findOne.mockResolvedValue(null);
+      const warn = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+
+      await service.requestOtp('+2348012345678');
+      expect(warn).not.toHaveBeenCalled();
+
+      const base = configService.get;
+      configService.get = jest.fn((key: string) => (key === 'otp.logCode' ? true : base(key)));
+      await service.requestOtp('+2348012345678');
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/OTP for \+2348012345678: \d{6}/));
     });
 
     it('throws when user not registered', async () => {

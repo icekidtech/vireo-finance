@@ -16,7 +16,7 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ JWT_SECRET: secret })).not.toThrow();
   });
 
-  it('forbids echoing OTPs in production', () => {
+  it('forbids logging OTPs in production', () => {
     expect(() =>
       validateEnv({
         NODE_ENV: 'production',
@@ -24,13 +24,13 @@ describe('validateEnv', () => {
         DB_HOST: 'h',
         DB_USER: 'u',
         DB_NAME: 'n',
-        OTP_ECHO_CODE: 'true',
+        OTP_LOG_CODE: 'true',
       }),
-    ).toThrow(/OTP_ECHO_CODE/);
+    ).toThrow(/OTP_LOG_CODE/);
   });
 
-  it('allows OTP echo outside production', () => {
-    expect(() => validateEnv({ JWT_SECRET: secret, OTP_ECHO_CODE: 'true' })).not.toThrow();
+  it('allows OTP logging outside production', () => {
+    expect(() => validateEnv({ JWT_SECRET: secret, OTP_LOG_CODE: 'true' })).not.toThrow();
   });
 
   it('requires a real 32-byte key once a biometric provider is named', () => {

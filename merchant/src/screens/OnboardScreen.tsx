@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import { errorMessage } from '../lib/format';
-import { Button, ErrorBanner, Field, NoticeBanner, Screen } from '../components/ui';
+import { Button, ErrorBanner, Field, Screen } from '../components/ui';
 import { colors, spacing, type } from '../theme';
 
 type Stage = 'welcome' | 'account' | 'otp' | 'business';
@@ -15,7 +15,6 @@ export default function OnboardScreen() {
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [devCode, setDevCode] = useState<string | null>(null);
   const [token, setToken] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [handle, setHandle] = useState('');
@@ -38,8 +37,7 @@ export default function OnboardScreen() {
   };
 
   const sendCode = async () => {
-    const otp = await api.requestOtp(phone.trim());
-    setDevCode(otp.devCode ?? null);
+    await api.requestOtp(phone.trim());
     setStage('otp');
   };
 
@@ -144,7 +142,6 @@ export default function OnboardScreen() {
             <>
               <Text style={styles.title}>Enter the code</Text>
               <Text style={styles.sub}>Sent to {phone}</Text>
-              {devCode && <NoticeBanner tone="success" message={`Dev code: ${devCode}`} />}
               <Field label="6-DIGIT CODE" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} />
               <Button title="Verify" loading={loading} disabled={code.length !== 6} onPress={onVerify} />
               <Button title="Resend code" variant="ghost" onPress={() => guard(sendCode, 'Could not resend')} />

@@ -118,7 +118,6 @@ export interface BiometricAttempt {
 
 export interface OtpRequestResult {
   expiresIn: number;
-  devCode?: string;
 }
 
 export interface VerifyOtpResult {
