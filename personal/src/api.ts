@@ -160,11 +160,34 @@ export class VireoApi {
     return data;
   }
 
-  async submitTransfer(transferId: string, signature: string) {
+  /** `confirmation.pin` is sent only when the user approved with their PIN instead of biometrics. */
+  async submitTransfer(
+    transferId: string,
+    signature: string,
+    confirmation: { approval: 'biometric' | 'pin'; pin?: string } = { approval: 'biometric' },
+  ) {
     const { data } = await this.client.post<{ transfer: Transfer }>(`/transfers/${transferId}/submit`, {
       signature,
+      ...confirmation,
     });
     return data;
+  }
+
+  /* ── Transaction PIN ── */
+
+  async getPinStatus() {
+    const { data } = await this.client.get<{ set: boolean; locked: boolean; lockedUntil: string | null }>('/pin/status');
+    return data;
+  }
+
+  /** Sets a PIN, or changes it (then `currentPin` is required). */
+  async setPin(pin: string, currentPin?: string) {
+    await this.client.post('/pin', { pin, ...(currentPin ? { currentPin } : {}) });
+  }
+
+  /** Forgotten PIN: needs a fresh SMS code (request it with requestOtp). */
+  async resetPin(code: string, pin: string) {
+    await this.client.post('/pin/reset', { code, pin });
   }
 
   /* ── KYC ── */

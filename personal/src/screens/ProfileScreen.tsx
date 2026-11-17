@@ -17,6 +17,7 @@ type Props = CompositeScreenProps<
 
 export default function ProfileScreen({ navigation }: Props) {
   const { user, logout } = useAuth();
+  const pin = useLoad(() => api.getPinStatus(), 'Could not load your PIN status');
   const kyc = useLoad(() => api.getKycStatus(), 'Could not load verification status');
 
   const confirmSignOut = () =>
@@ -48,6 +49,7 @@ export default function ProfileScreen({ navigation }: Props) {
 
       <SectionTitle>Security</SectionTitle>
       <Card style={{ paddingVertical: spacing.sm }}>
+        <ListRow title="Transaction PIN" subtitle={pin.data?.set ? 'Change or reset your 4-digit PIN' : 'Set a PIN to approve payments without biometrics'} trailing={pin.data ? <StatusPill status={pin.data.set ? 'set' : 'not_set'} /> : '›'} onPress={() => navigation.navigate('Pin')} />
         <ListRow title="Signing devices" subtitle="Phones that can approve payments" trailing="›" onPress={() => navigation.navigate('Devices')} />
         <ListRow title="Face payments" subtitle="Pay without your phone at merchant tills" trailing="›" onPress={() => navigation.navigate('Biometrics')} />
       </Card>

@@ -8,6 +8,7 @@ import { LedgerModule } from '../ledger/ledger.module';
 import { Merchant } from '../merchant/merchant.entity';
 import { MerchantOrder } from '../merchant/merchant-order.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PinModule } from '../pin/pin.module';
 import { PagaModule } from '../paga/paga.module';
 import { RiskModule } from '../risk/risk.module';
 import { User } from '../users/user.entity';
@@ -23,6 +24,7 @@ import { TransfersService } from './transfers.service';
     ChallengesModule,
     RiskModule,
     PagaModule,
+    PinModule,
     NotificationsModule,
   ],
   controllers: [TransfersController],

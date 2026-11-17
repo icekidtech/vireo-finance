@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { BiometricsModule } from './biometrics/biometrics.module';
 import { ChallengesModule } from './challenges/challenges.module';
 import { HealthModule } from './health/health.module';
+import { PinModule } from './pin/pin.module';
 import { DocumentsModule } from './documents/documents.module';
 import { KycModule } from './kyc/kyc.module';
 import { LedgerModule } from './ledger/ledger.module';
@@ -31,6 +32,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     HealthModule,
     KycModule,
     DocumentsModule,
+    PinModule,
     AuthModule,
     AccountsModule,
     LedgerModule,

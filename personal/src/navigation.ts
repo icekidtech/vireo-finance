@@ -17,6 +17,7 @@ export type RootStackParamList = {
   Tabs: NavigatorScreenParams<TabParamList>;
   TransferDetail: { transferId: string };
   Kyc: undefined;
+  Pin: undefined;
   Devices: undefined;
   Biometrics: undefined;
   BiometricEnroll: undefined;

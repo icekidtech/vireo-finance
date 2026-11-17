@@ -1,7 +1,12 @@
 import { randomBytes } from 'crypto';
-import { validateEnv } from './env.validation';
+import { validateEnv as validateEnvRaw } from './env.validation';
+
+/** Most tests are about other settings, so they get a valid PIN_PEPPER unless they set their own. */
+const validateEnv = (config: Record<string, unknown>) =>
+  validateEnvRaw({ PIN_PEPPER: 'y'.repeat(40), ...config });
 
 const secret = 'x'.repeat(40);
+const pepper = 'y'.repeat(40);
 
 describe('validateEnv', () => {
   it('requires a JWT secret in every environment', () => {
@@ -172,5 +177,12 @@ describe('validateEnv', () => {
         validateEnv({ ...base, DOCUMENT_ENCRYPTION_KEY: key, KYC_ENCRYPTION_KEY: key }),
       ).toThrow(/must differ/);
     });
+  });
+
+  it('requires a strong PIN pepper that differs from the JWT secret', () => {
+    expect(() => validateEnvRaw({ JWT_SECRET: secret })).toThrow(/PIN_PEPPER/);
+    expect(() => validateEnvRaw({ JWT_SECRET: secret, PIN_PEPPER: 'short' })).toThrow(/PIN_PEPPER/);
+    expect(() => validateEnvRaw({ JWT_SECRET: secret, PIN_PEPPER: secret })).toThrow(/must differ/);
+    expect(() => validateEnvRaw({ JWT_SECRET: secret, PIN_PEPPER: pepper })).not.toThrow();
   });
 });

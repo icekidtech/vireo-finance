@@ -50,6 +50,16 @@ export class CreateTransferDraftDto {
 export class SubmitTransferDto {
   @IsString()
   signature: string;
+
+  /** How the user confirmed on their phone. `pin` needs the PIN below. Defaults to biometric. */
+  @IsOptional()
+  @IsIn(['biometric', 'pin'])
+  approval?: 'biometric' | 'pin';
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}$/, { message: 'pin must be 4 digits' })
+  pin?: string;
 }
 
 export class BankLookupDto {

@@ -5,7 +5,8 @@ import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
-import { approveAndSign, ensureDeviceRegistered } from '../lib/deviceKey';
+import { approveAndSign, biometricAvailable, ensureDeviceRegistered, signWithoutBiometric } from '../lib/deviceKey';
+import { showAlert } from '../lib/dialog';
 import { addMoney, errorMessage, formatMoney, groupAmountInput, parseOrderReference } from '../lib/format';
 import type { MerchantOrder, Transfer, TransferDraft } from '../types';
 import type { RootStackParamList, TabParamList } from '../navigation';
@@ -19,13 +20,13 @@ import {
   FitText,
   Keypad,
   ListRow,
-  NoticeBanner,
   Screen,
   SegmentedControl,
   applyKey,
 } from '../components/ui';
 import { Pop } from '../components/motion';
 import QrScanner from '../components/QrScanner';
+import PinPad from '../components/PinPad';
 import BankPicker, { type Bank } from '../components/BankPicker';
 import { colors, spacing, type } from '../theme';
 
@@ -58,7 +59,11 @@ export default function PayScreen({ navigation, route }: Props) {
   const [sent, setSent] = useState<Transfer | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState(() => Crypto.randomUUID());
   const [deviceId, setDeviceId] = useState<string | null>(null);
-  const [biometric, setBiometric] = useState(true);
+  const [approvedBy, setApprovedBy] = useState<'biometric' | 'pin'>('biometric');
+  const [bioAvailable, setBioAvailable] = useState(false);
+  const [pinSet, setPinSet] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,6 +76,16 @@ export default function PayScreen({ navigation, route }: Props) {
       cancelled = true;
     };
   }, []);
+
+  // What can confirm a payment on this phone: fingerprint/face, and/or a PIN.
+  useEffect(() => {
+    let cancelled = false;
+    biometricAvailable().then((v) => !cancelled && setBioAvailable(v));
+    api.getPinStatus().then((s) => !cancelled && setPinSet(s.set)).catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [stage]);
 
   // Deep link / navigation param: pre-fill a merchant order reference.
   const presetRef = route.params?.orderReference;
@@ -94,7 +109,9 @@ export default function PayScreen({ navigation, route }: Props) {
     setDraft(null);
     setSent(null);
     setError(null);
-    setBiometric(true);
+    setApprovedBy('biometric');
+    setPinOpen(false);
+    setPinError(null);
     setIdempotencyKey(Crypto.randomUUID());
   }, []);
 
@@ -196,20 +213,60 @@ export default function PayScreen({ navigation, route }: Props) {
     }
   };
 
+  const finishPayment = (result: { transfer: Transfer }, by: 'biometric' | 'pin') => {
+    setApprovedBy(by);
+    setSent(result.transfer);
+    setPinOpen(false);
+    setStage('done');
+  };
+
+  /** Fingerprint or face when this phone has it; otherwise the PIN. */
   const approve = async () => {
     if (!draft?.challenge) return setError('This payment has nothing left to sign');
+    if (!bioAvailable) {
+      if (!pinSet) {
+        return showAlert(
+          'Set a PIN to pay',
+          'This phone has no fingerprint or face unlock set up. Set a 4-digit PIN to confirm payments.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Set PIN', onPress: () => navigation.navigate('Pin') },
+          ],
+        );
+      }
+      return openPin();
+    }
     setLoading(true);
     setError(null);
     try {
       // The phone's biometric unlocks the device key, which signs the exact
       // payloadHash the server issued. The server verifies before posting.
       const approval = await approveAndSign(draft.challenge.payloadHash);
-      setBiometric(approval.biometric);
-      const result = await api.submitTransfer(draft.transfer.id, approval.signature);
-      setSent(result.transfer);
-      setStage('done');
+      finishPayment(await api.submitTransfer(draft.transfer.id, approval.signature), 'biometric');
     } catch (e) {
-      setError(errorMessage(e, 'Payment failed'));
+      const message = errorMessage(e, 'Payment failed');
+      setError(message === 'Approval cancelled' && pinSet ? 'Cancelled. You can use your PIN instead.' : message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openPin = () => {
+    setPinError(null);
+    setError(null);
+    setPinOpen(true);
+  };
+
+  const approveWithPin = async (pin: string) => {
+    if (!draft?.challenge) return;
+    setLoading(true);
+    setPinError(null);
+    try {
+      const signature = await signWithoutBiometric(draft.challenge.payloadHash);
+      finishPayment(await api.submitTransfer(draft.transfer.id, signature, { approval: 'pin', pin }), 'pin');
+    } catch (e) {
+      // Wrong PIN etc.: stay on the pad so they can try again (the server counts attempts and locks).
+      setPinError(errorMessage(e, 'Payment failed'));
     } finally {
       setLoading(false);
     }
@@ -233,9 +290,7 @@ export default function PayScreen({ navigation, route }: Props) {
           <BigMoney amount={sent.amount} color={colors.black} />
           <Text style={styles.doneTo}>to {sent.recipientName}</Text>
           {sent.failureReason ? <Text style={styles.reason}>{sent.failureReason}</Text> : null}
-          {!biometric && (
-            <NoticeBanner message="No biometric hardware on this device, so approval was not biometric-gated." />
-          )}
+          <Text style={styles.doneVia}>Approved with {approvedBy === 'pin' ? 'your PIN' : 'fingerprint or face'}</Text>
         </View>
         <Button
           title="Done"
@@ -250,6 +305,23 @@ export default function PayScreen({ navigation, route }: Props) {
   }
 
   /* ── Review ── */
+  if (stage === 'review' && draft && pinOpen) {
+    const t = draft.transfer;
+    return (
+      <Screen>
+        <View style={{ marginTop: spacing.xl }} />
+        <PinPad
+          title="Enter your PIN"
+          subtitle={`Confirm ${formatMoney(t.amount, t.currency)} to ${t.recipientName ?? 'this payee'}`}
+          error={pinError}
+          onComplete={approveWithPin}
+          disabled={loading}
+        />
+        <Button title="Cancel" variant="ghost" onPress={() => { setPinOpen(false); setPinError(null); }} style={{ marginTop: spacing.lg }} />
+      </Screen>
+    );
+  }
+
   if (stage === 'review' && draft) {
     const t = draft.transfer;
     return (
@@ -266,8 +338,15 @@ export default function PayScreen({ navigation, route }: Props) {
           <ListRow title="Fee" trailing={formatMoney(t.fee, t.currency)} />
           <ListRow title="Total" trailing={formatMoney(addMoney(t.amount, t.fee), t.currency)} />
         </Card>
-        <Text style={styles.hint}>Approve with your fingerprint or face to sign this payment.</Text>
-        <Button title="Approve & pay" variant="accent" onPress={approve} loading={loading} />
+        <Text style={styles.hint}>
+          {bioAvailable
+            ? 'Confirm with your fingerprint or face to send this payment.'
+            : pinSet
+              ? 'Confirm with your 4-digit PIN to send this payment.'
+              : 'Set a 4-digit PIN to confirm payments on this phone.'}
+        </Text>
+        <Button title={!bioAvailable && !pinSet ? 'Set a PIN to pay' : 'Confirm & pay'} variant="accent" onPress={approve} loading={loading} />
+        {bioAvailable && pinSet ? <Button title="Use PIN instead" variant="ghost" onPress={openPin} /> : null}
         <Button
           title="Cancel"
           variant="ghost"
@@ -414,6 +493,7 @@ const styles = StyleSheet.create({
   resolvedName: { ...type.heading, color: colors.text },
   merchantName: { ...type.heading, color: colors.text, marginBottom: spacing.sm },
   note: { ...type.body, color: colors.textMuted, marginTop: spacing.sm },
+  doneVia: { ...type.caption, color: colors.black, marginTop: spacing.md },
   hint: { ...type.caption, color: colors.textMuted, textAlign: 'center', marginVertical: spacing.lg },
   done: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
   doneTitle: { ...type.heading, color: colors.black, marginBottom: spacing.md },

@@ -15,6 +15,7 @@ import ActivityScreen from './src/screens/ActivityScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import TransferDetailScreen from './src/screens/TransferDetailScreen';
 import KycScreen from './src/screens/KycScreen';
+import PinScreen from './src/screens/PinScreen';
 import DevicesScreen from './src/screens/DevicesScreen';
 import BiometricsScreen from './src/screens/BiometricsScreen';
 import BiometricEnrollScreen from './src/screens/BiometricEnrollScreen';
@@ -96,6 +97,7 @@ function AppNavigator() {
             <Stack.Screen name="Tabs" component={Tabs} />
             <Stack.Screen name="TransferDetail" component={TransferDetailScreen} />
             <Stack.Screen name="Kyc" component={KycScreen} />
+            <Stack.Screen name="Pin" component={PinScreen} />
             <Stack.Screen name="Devices" component={DevicesScreen} />
             <Stack.Screen name="Biometrics" component={BiometricsScreen} />
             <Stack.Screen name="BiometricEnroll" component={BiometricEnrollScreen} />

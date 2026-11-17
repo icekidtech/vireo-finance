@@ -38,6 +38,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PagaService } from '../paga/paga.service';
 import { RiskService } from '../risk/risk.service';
 import { BalanceCapService } from '../risk/balance-cap.service';
+import { PinService } from '../pin/pin.service';
 import { User } from '../users/user.entity';
 import { BankLookupDto, CreateTransferDraftDto } from './dto/transfers.dto';
 import { Transfer } from './transfer.entity';
@@ -66,6 +67,7 @@ export class TransfersService {
     private readonly paga: PagaService,
     private readonly notifications: NotificationsService,
     @Optional() private readonly balanceCaps?: BalanceCapService,
+    @Optional() private readonly pins?: PinService,
   ) {}
 
   /** Banks Paga can pay out to, for the client's bank picker. */
@@ -246,7 +248,12 @@ export class TransfersService {
     return { transfer: presentTransfer(transfer), challenge: presentChallenge(challenge) };
   }
 
-  async submit(userId: string, transferId: string, signature: string) {
+  async submit(
+    userId: string,
+    transferId: string,
+    signature: string,
+    confirmation: { approval: 'biometric' | 'pin'; pin?: string } = { approval: 'biometric' },
+  ) {
     const preview = await this.transfers.findOne({
       where: { id: transferId, initiatedByUserId: userId },
     });
@@ -258,6 +265,13 @@ export class TransfersService {
     }
     if (preview.status !== TransferStatus.DRAFT) {
       throw new BadRequestException(`Transfer is already ${preview.status}`);
+    }
+
+    // Confirmation by PIN is checked before anything is spent or any challenge is consumed,
+    // so a wrong PIN never uses up the payment's one-time signature.
+    if (confirmation.approval === 'pin') {
+      if (!this.pins) throw new BadRequestException('PIN confirmation is not available');
+      await this.pins.verify(userId, confirmation.pin ?? '');
     }
 
     if (preview.type === TransferType.INTERNAL) {

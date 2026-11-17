@@ -192,3 +192,52 @@ describe('TransfersService bank lookup', () => {
     ]);
   });
 });
+
+describe('TransfersService.submit PIN confirmation', () => {
+  function make(pins: any) {
+    const draft = {
+      id: 't1',
+      status: TransferStatus.DRAFT,
+      type: TransferType.INTERNAL,
+      initiatedByUserId: 'u1',
+    };
+    const transfers = { findOne: jest.fn(async () => draft) };
+    const ledger = { runInTransaction: jest.fn(async () => ({ id: 't1', status: 'completed' })) };
+    const service = new TransfersService(
+      transfers as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      ledger as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      undefined,
+      pins,
+    );
+    return { service, ledger };
+  }
+
+  it('checks the PIN first and never starts the payment when it is wrong', async () => {
+    const pins = {
+      verify: jest.fn(async () => {
+        throw new Error('Wrong PIN. 4 attempts left.');
+      }),
+    };
+    const { service, ledger } = make(pins);
+    await expect(
+      service.submit('u1', 't1', 'sig', { approval: 'pin', pin: '1111' }),
+    ).rejects.toThrow('Wrong PIN');
+    expect(pins.verify).toHaveBeenCalledWith('u1', '1111');
+    expect(ledger.runInTransaction).not.toHaveBeenCalled();
+  });
+
+  it('does not ask for a PIN on the biometric path', async () => {
+    const pins = { verify: jest.fn() };
+    const { service } = make(pins);
+    await service.submit('u1', 't1', 'sig', { approval: 'biometric' }).catch(() => undefined);
+    expect(pins.verify).not.toHaveBeenCalled();
+  });
+});

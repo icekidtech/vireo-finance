@@ -20,7 +20,10 @@ export class TransfersController {
     @Param('id') id: string,
     @Body() dto: SubmitTransferDto,
   ) {
-    return this.transfers.submit(user.userId, id, dto.signature);
+    return this.transfers.submit(user.userId, id, dto.signature, {
+      approval: dto.approval ?? 'biometric',
+      pin: dto.pin,
+    });
   }
 
   @Get('banks')

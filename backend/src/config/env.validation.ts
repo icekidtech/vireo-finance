@@ -15,6 +15,14 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     errors.push(`JWT_SECRET must be set to at least ${MIN_JWT_SECRET_LENGTH} characters`);
   }
 
+  const pepper = typeof config.PIN_PEPPER === 'string' ? config.PIN_PEPPER : '';
+  if (pepper.length < MIN_JWT_SECRET_LENGTH) {
+    errors.push(`PIN_PEPPER must be set to at least ${MIN_JWT_SECRET_LENGTH} characters`);
+  }
+  if (pepper && pepper === jwtSecret) {
+    errors.push('PIN_PEPPER must differ from JWT_SECRET');
+  }
+
   if (config.NODE_ENV === 'production') {
     for (const key of REQUIRED_IN_PRODUCTION) {
       if (!config[key]) errors.push(`${key} is required in production`);

@@ -100,8 +100,14 @@ export class AuthService {
     return { expiresIn: ttl };
   }
 
-  async verifyOtp(phoneInput: string, code: string) {
-    const phone = normalizePhone(phoneInput);
+  /** Proves the signed-in user owns their phone right now (a fresh one-time code), for sensitive changes such as resetting the PIN. */
+  async consumeOtpForUser(userId: string, code: string): Promise<void> {
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    await this.consumeOtp(user.phone, code);
+  }
+
+  private async consumeOtp(phone: string, code: string): Promise<void> {
     const otp = await this.otps.findOne({
       where: { phone, consumedAt: IsNull() },
       order: { createdAt: 'DESC' },
@@ -117,9 +123,13 @@ export class AuthService {
       await this.otps.save(otp);
       throw new BadRequestException('OTP is invalid or expired');
     }
-
     otp.consumedAt = new Date();
     await this.otps.save(otp);
+  }
+
+  async verifyOtp(phoneInput: string, code: string) {
+    const phone = normalizePhone(phoneInput);
+    await this.consumeOtp(phone, code);
 
     const user = await this.users.findOne({ where: { phone } });
     if (!user) {

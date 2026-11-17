@@ -6,9 +6,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import { errorMessage } from '../lib/format';
 import { AuthLayout, Button, ErrorBanner, Field, Screen } from '../components/ui';
+import PinSetup from '../components/PinSetup';
 import { colors, spacing, type } from '../theme';
 
-type Stage = 'welcome' | 'details' | 'otp';
+type Stage = 'welcome' | 'details' | 'otp' | 'pin';
 
 export default function AuthScreen({ navigation, route }: StackScreenProps<RootStackParamList, 'Auth'>) {
   const { login } = useAuth();
@@ -17,6 +18,7 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
   const mode = route.params?.mode;
   const [stage, setStage] = useState<Stage>(mode ? 'details' : 'welcome');
   const [isSignIn, setIsSignIn] = useState(mode === 'signin');
+  const [session, setSession] = useState<{ token: string; user: Parameters<typeof login>[1] } | null>(null);
   const [phone, setPhone] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -54,11 +56,20 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
   const onVerify = () =>
     guard(async () => {
       const data = await api.verifyOtp(phone.trim(), code.trim());
-      login(data.accessToken, data.user);
+      if (isSignIn) {
+        login(data.accessToken, data.user);
+        return;
+      }
+      // New account: choose a PIN before entering the app. The token is set on the API client
+      // so the PIN call is authenticated, but the app only treats the user as signed in afterwards.
+      api.setToken(data.accessToken);
+      setSession({ token: data.accessToken, user: data.user });
+      setStage('pin');
     }, 'Invalid or expired code');
 
   const back = () => {
     setError(null);
+    if (stage === 'pin') return; // the account exists; finishing or skipping continues into the app
     if (stage === 'otp') return setStage('details');
     if (mode && navigation.canGoBack()) return navigation.goBack();
     setStage('welcome');
@@ -118,6 +129,14 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
                 onPress={onContinue}
               />
             </>
+          )}
+
+          {stage === 'pin' && session && (
+            <PinSetup
+              title="Create your PIN"
+              onDone={() => login(session.token, session.user)}
+              onSkip={() => login(session.token, session.user)}
+            />
           )}
 
           {stage === 'otp' && (

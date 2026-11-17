@@ -338,6 +338,8 @@ const PILL_TONES: Record<string, { bg: string; fg: string }> = {
   paid: { bg: colors.accentSoft, fg: colors.accentDark },
   completed: { bg: colors.accentSoft, fg: colors.accentDark },
   verified: { bg: colors.accentSoft, fg: colors.accentDark },
+  set: { bg: colors.accentSoft, fg: colors.accentDark },
+  not_set: { bg: colors.warnSoft, fg: colors.warn },
   open: { bg: colors.warnSoft, fg: colors.warn },
   pending: { bg: colors.warnSoft, fg: colors.warn },
   not_started: { bg: colors.surfaceStrong, fg: colors.textMuted },

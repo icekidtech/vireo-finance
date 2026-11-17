@@ -80,6 +80,10 @@ export interface AppConfig {
       timeoutMs: number;
     };
   };
+  pin: {
+    /** Server secret keying the PIN hashes (never stored in the database). */
+    pepper: string;
+  };
   kyc: {
     /** Name of the BVN verification vendor; empty disables automatic BVN checks. */
     provider: string;
@@ -190,6 +194,9 @@ export default (): AppConfig => ({
       bucketName: process.env.B2_BUCKET_NAME ?? '',
       timeoutMs: parseInt(process.env.B2_TIMEOUT_MS ?? '20000', 10),
     },
+  },
+  pin: {
+    pepper: process.env.PIN_PEPPER ?? '',
   },
   kyc: {
     provider: (process.env.KYC_PROVIDER ?? '').trim().toLowerCase(),
