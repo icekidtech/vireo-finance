@@ -26,6 +26,7 @@ import {
 } from '../components/ui';
 import { Pop } from '../components/motion';
 import QrScanner from '../components/QrScanner';
+import BankPicker, { type Bank } from '../components/BankPicker';
 import { colors, spacing, type } from '../theme';
 
 type Props = CompositeScreenProps<
@@ -41,7 +42,11 @@ export default function PayScreen({ navigation, route }: Props) {
   const [stage, setStage] = useState<Stage>('amount');
   const [amount, setAmount] = useState('');
   const [recipient, setRecipient] = useState('');
-  const [bankCode, setBankCode] = useState('');
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [banksLoading, setBanksLoading] = useState(false);
+  const [bank, setBank] = useState<Bank | null>(null);
+  const [accountName, setAccountName] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(false);
   const [accountNumber, setAccountNumber] = useState('');
   const [orderInput, setOrderInput] = useState('');
   const [manual, setManual] = useState(false);
@@ -77,7 +82,8 @@ export default function PayScreen({ navigation, route }: Props) {
     setStage('amount');
     setAmount('');
     setRecipient('');
-    setBankCode('');
+    setBank(null);
+    setAccountName(null);
     setAccountNumber('');
     setOrderInput('');
     setManual(false);
@@ -88,6 +94,34 @@ export default function PayScreen({ navigation, route }: Props) {
     setBiometric(true);
     setIdempotencyKey(Crypto.randomUUID());
   }, []);
+
+  // Load Paga's supported banks the first time the bank form is needed.
+  useEffect(() => {
+    if (stage !== 'recipient' || kind !== 'bank' || banks.length || banksLoading) return;
+    setBanksLoading(true);
+    api
+      .listBanks()
+      .then(setBanks)
+      .catch((e) => setError(errorMessage(e, 'Could not load the list of banks')))
+      .finally(() => setBanksLoading(false));
+  }, [stage, kind, banks.length, banksLoading]);
+
+  // Resolve the account holder's name once bank + 10-digit account are set.
+  useEffect(() => {
+    setAccountName(null);
+    if (kind !== 'bank' || !bank || !/^\d{10}$/.test(accountNumber)) return;
+    let cancelled = false;
+    setResolving(true);
+    setError(null);
+    api
+      .lookupBankAccount({ bankCode: bank.code, accountNumber, amount: amount.replace(/\.$/, '') })
+      .then((r) => !cancelled && setAccountName(r.accountName))
+      .catch((e) => !cancelled && setError(errorMessage(e, 'Could not verify this account')))
+      .finally(() => !cancelled && setResolving(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, bank, accountNumber, amount]);
 
   const lookupOrder = async (raw: string = orderInput) => {
     const reference = parseOrderReference(raw);
@@ -137,7 +171,7 @@ export default function PayScreen({ navigation, route }: Props) {
             ? { recipientHandle: recipient.trim().slice(1) }
             : { recipientPhone: recipient.trim() }
           : {}),
-        ...(kind === 'bank' ? { bankCode: bankCode.trim(), accountNumber: accountNumber.trim() } : {}),
+        ...(kind === 'bank' ? { bankCode: bank!.code, accountNumber: accountNumber.trim() } : {}),
         ...(kind === 'merchant' ? { orderReference: order!.reference } : {}),
       });
       setDraft(data);
@@ -250,14 +284,28 @@ export default function PayScreen({ navigation, route }: Props) {
           <Field label="TO" placeholder="Phone number or $handle" value={recipient} onChangeText={setRecipient} autoCapitalize="none" autoFocus />
         ) : (
           <>
-            <Field label="BANK CODE" placeholder="058" value={bankCode} onChangeText={setBankCode} autoCapitalize="none" autoFocus />
-            <Field label="ACCOUNT NUMBER" placeholder="0123456789" value={accountNumber} onChangeText={setAccountNumber} keyboardType="number-pad" />
+            <BankPicker banks={banks} value={bank} onChange={(b) => { setBank(b); setError(null); }} loading={banksLoading} />
+            <Field
+              label="ACCOUNT NUMBER"
+              placeholder="10-digit account number"
+              value={accountNumber}
+              onChangeText={(v) => setAccountNumber(v.replace(/\D/g, '').slice(0, 10))}
+              keyboardType="number-pad"
+              maxLength={10}
+            />
+            {resolving ? <Text style={styles.hint}>Verifying account…</Text> : null}
+            {accountName ? (
+              <Card>
+                <Text style={styles.resolvedLabel}>ACCOUNT NAME</Text>
+                <Text style={styles.resolvedName}>{accountName}</Text>
+              </Card>
+            ) : null}
           </>
         )}
         <Button
           title="Review"
           loading={loading}
-          disabled={!deviceId || (kind === 'internal' ? !recipient.trim() : !bankCode.trim() || !accountNumber.trim())}
+          disabled={!deviceId || (kind === 'internal' ? !recipient.trim() : !bank || !accountName)}
           onPress={createDraft}
         />
       </Screen>
@@ -346,6 +394,8 @@ const styles = StyleSheet.create({
   recipientTop: { alignItems: 'center', marginVertical: spacing.xl },
   reviewTop: { alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xl },
   to: { ...type.heading, color: colors.text, marginTop: spacing.sm },
+  resolvedLabel: { ...type.label, color: colors.textMuted, marginBottom: spacing.xs },
+  resolvedName: { ...type.heading, color: colors.text },
   merchantName: { ...type.heading, color: colors.text, marginBottom: spacing.sm },
   note: { ...type.body, color: colors.textMuted, marginTop: spacing.sm },
   hint: { ...type.caption, color: colors.textMuted, textAlign: 'center', marginVertical: spacing.lg },

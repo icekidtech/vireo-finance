@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CreateTransferDraftDto, SubmitTransferDto } from './dto/transfers.dto';
+import { BankLookupDto, CreateTransferDraftDto, SubmitTransferDto } from './dto/transfers.dto';
 import { TransfersService } from './transfers.service';
 
 @UseGuards(JwtAuthGuard)
@@ -21,6 +21,16 @@ export class TransfersController {
     @Body() dto: SubmitTransferDto,
   ) {
     return this.transfers.submit(user.userId, id, dto.signature);
+  }
+
+  @Get('banks')
+  banks() {
+    return this.transfers.listBanks();
+  }
+
+  @Post('bank-lookup')
+  bankLookup(@CurrentUser() user: AuthenticatedUser, @Body() dto: BankLookupDto) {
+    return this.transfers.lookupBankAccount(user.userId, dto);
   }
 
   @Get()

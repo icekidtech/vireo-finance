@@ -132,3 +132,63 @@ describe('TransferStatus enum', () => {
     expect(TransferStatus.REVERSED).toBe('reversed');
   });
 });
+
+describe('TransfersService bank lookup', () => {
+  const dto = {
+    bankCode: '11111111-1111-4111-8111-111111111111',
+    accountNumber: '0123456789',
+    amount: '200',
+  };
+  function make(paga: any) {
+    return new TransfersService(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      paga,
+      {} as any,
+    );
+  }
+
+  it('returns the account holder name from Paga', async () => {
+    const paga = {
+      validateBankAccount: jest.fn(async () => ({
+        accountName: 'ADA OBI',
+        accountNumber: dto.accountNumber,
+      })),
+    };
+    await expect(make(paga).lookupBankAccount('u1', dto)).resolves.toMatchObject({
+      accountName: 'ADA OBI',
+    });
+  });
+
+  it('rate-limits lookups per user', async () => {
+    const paga = {
+      validateBankAccount: jest.fn(async () => ({
+        accountName: 'ADA OBI',
+        accountNumber: dto.accountNumber,
+      })),
+    };
+    const service = make(paga);
+    for (let i = 0; i < 15; i++) await service.lookupBankAccount('u1', dto);
+    await expect(service.lookupBankAccount('u1', dto)).rejects.toThrow('Too many account lookups');
+    await expect(service.lookupBankAccount('u2', dto)).resolves.toBeDefined();
+  });
+
+  it('lists banks sorted by name, exposing only name and code', async () => {
+    const paga = {
+      listBanks: jest.fn(async () => [
+        { name: 'Zenith', uuid: 'z', sortCode: '057' },
+        { name: 'Access', uuid: 'a', sortCode: '044' },
+      ]),
+    };
+    await expect(make(paga).listBanks()).resolves.toEqual([
+      { code: 'a', name: 'Access' },
+      { code: 'z', name: 'Zenith' },
+    ]);
+  });
+});

@@ -51,3 +51,17 @@ export class SubmitTransferDto {
   @IsString()
   signature: string;
 }
+
+export class BankLookupDto {
+  /** Paga bank uuid, as returned by GET /transfers/banks. */
+  @IsUUID()
+  bankCode: string;
+
+  @IsString()
+  @Matches(/^\d{10}$/, { message: 'accountNumber must be a 10-digit NUBAN' })
+  accountNumber: string;
+
+  @IsString()
+  @Matches(AMOUNT_PATTERN, { message: 'amount must be a positive decimal with up to 2 places' })
+  amount: string;
+}

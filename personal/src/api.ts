@@ -140,6 +140,19 @@ export class VireoApi {
     return data;
   }
 
+  async listBanks() {
+    const { data } = await this.client.get<{ code: string; name: string }[]>('/transfers/banks');
+    return data;
+  }
+
+  async lookupBankAccount(payload: { bankCode: string; accountNumber: string; amount: string }) {
+    const { data } = await this.client.post<{ accountName: string; accountNumber: string; bankCode: string }>(
+      '/transfers/bank-lookup',
+      payload,
+    );
+    return data;
+  }
+
   async createTransferDraft(payload: TransferDraftInput) {
     const { data } = await this.client.post<TransferDraft>('/transfers/drafts', payload);
     return data;

@@ -314,7 +314,7 @@ export class PagaService {
     return candidates.some((candidate) => safeEqual(candidate, bodyHash));
   }
 
-  private async listBanks(): Promise<PagaBank[]> {
+  async listBanks(): Promise<PagaBank[]> {
     if (this.bankCache && Date.now() - this.bankCache.fetchedAt < BANK_CACHE_MS) {
       return this.bankCache.banks;
     }

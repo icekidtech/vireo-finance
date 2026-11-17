@@ -2,6 +2,8 @@ import {
   BadGatewayException,
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -35,13 +37,19 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PagaService } from '../paga/paga.service';
 import { RiskService } from '../risk/risk.service';
 import { User } from '../users/user.entity';
-import { CreateTransferDraftDto } from './dto/transfers.dto';
+import { BankLookupDto, CreateTransferDraftDto } from './dto/transfers.dto';
 import { Transfer } from './transfer.entity';
 
 const BANK_TRANSFER_FEE_MINOR = 10000n;
 
+const LOOKUP_WINDOW_MS = 60_000;
+const LOOKUP_LIMIT = 15;
+
 @Injectable()
 export class TransfersService {
+  /** Per-instance sliding window of bank lookups by user. */
+  private readonly lookups = new Map<string, number[]>();
+
   private readonly logger = new Logger(TransfersService.name);
 
   constructor(
@@ -56,6 +64,45 @@ export class TransfersService {
     private readonly paga: PagaService,
     private readonly notifications: NotificationsService,
   ) {}
+
+  /** Banks Paga can pay out to, for the client's bank picker. */
+  async listBanks() {
+    const banks = await this.paga.listBanks();
+    return banks
+      .map((b) => ({ code: b.uuid, name: b.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * Resolve the account holder's name so the sender can confirm who they are
+   * paying. Rate-limited per user: an open lookup would let anyone enumerate
+   * account holders.
+   */
+  async lookupBankAccount(userId: string, dto: BankLookupDto) {
+    const now = Date.now();
+    const recent = (this.lookups.get(userId) ?? []).filter((t) => now - t < LOOKUP_WINDOW_MS);
+    if (recent.length >= LOOKUP_LIMIT) {
+      throw new HttpException(
+        'Too many account lookups. Try again in a minute.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    recent.push(now);
+    this.lookups.set(userId, recent);
+
+    const validated = await this.paga.validateBankAccount({
+      bankCode: dto.bankCode,
+      accountNumber: dto.accountNumber,
+      amountMinor: parseAmountToMinor(dto.amount),
+      reference: `val_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
+    });
+    this.logger.log(`Bank account lookup by user=${userId} bank=${dto.bankCode}`);
+    return {
+      accountName: validated.accountName,
+      accountNumber: validated.accountNumber,
+      bankCode: dto.bankCode,
+    };
+  }
 
   async createDraft(
     userId: string,
