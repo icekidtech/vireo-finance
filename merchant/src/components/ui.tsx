@@ -1,4 +1,4 @@
-import { ReactNode, useRef } from 'react';
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radius, spacing, type } from '../theme';
 import { initials, splitMoney } from '../lib/format';
 import { FadeIn, Glow } from './motion';
+import { refreshAll } from '../lib/refreshBus';
 
 /* ───────────── Layout ───────────── */
 
@@ -36,19 +37,104 @@ interface ScreenProps {
   center?: boolean;
 }
 
+/** How far (in px, after damping) the user must pull before letting go refreshes. */
+const PULL_THRESHOLD = 64;
+
 export function Screen({
   children,
   scroll = true,
-  refreshing,
-  onRefresh,
+  // Kept so existing screens compile. Pull-to-refresh is app-wide now and refreshes every
+  // screen that loads data, so a screen's own refresh handler is no longer needed.
+  refreshing: _refreshing,
+  onRefresh: _onRefresh,
   padded = true,
   edges = ['top'],
   background = colors.bg,
   center = false,
 }: ScreenProps) {
+  const scrollRef = useRef<ScrollView>(null);
+  const [pull, setPull] = useState(0);
+  const [refreshingAll, setRefreshingAll] = useState(false);
+  const busy = useRef(false);
+
+  const trigger = useCallback(async () => {
+    if (busy.current) return;
+    busy.current = true;
+    setRefreshingAll(true);
+    try {
+      await refreshAll();
+    } finally {
+      busy.current = false;
+      setRefreshingAll(false);
+      setPull(0);
+    }
+  }, []);
+  const triggerRef = useRef(trigger);
+  triggerRef.current = trigger;
+
+  // Web has no native pull-to-refresh (RefreshControl does nothing there), so drag-down at the top is handled here.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !scroll) return;
+    const node = (scrollRef.current as unknown as { getScrollableNode?: () => HTMLElement } | null)?.getScrollableNode?.();
+    if (!node) return;
+    // Stop the browser's own pull-to-reload gesture from taking over (that is what resets the page).
+    node.style.overscrollBehaviorY = 'contain';
+    let startY = 0;
+    let tracking = false;
+    let dist = 0;
+    const start = (y: number) => {
+      if (busy.current || node.scrollTop > 0) return;
+      startY = y;
+      tracking = true;
+      dist = 0;
+    };
+    const move = (y: number) => {
+      if (!tracking) return;
+      const dy = y - startY;
+      if (node.scrollTop > 0 || dy <= 0) {
+        if (dist !== 0) {
+          dist = 0;
+          setPull(0);
+        }
+        return;
+      }
+      dist = Math.min(dy * 0.5, 110);
+      setPull(dist);
+    };
+    const end = () => {
+      if (!tracking) return;
+      tracking = false;
+      if (dist >= PULL_THRESHOLD) void triggerRef.current();
+      else setPull(0);
+      dist = 0;
+    };
+    const ts = (e: TouchEvent) => start(e.touches[0].clientY);
+    const tm = (e: TouchEvent) => move(e.touches[0].clientY);
+    const md = (e: MouseEvent) => e.button === 0 && start(e.clientY);
+    const mm = (e: MouseEvent) => move(e.clientY);
+    node.addEventListener('touchstart', ts, { passive: true });
+    node.addEventListener('touchmove', tm, { passive: true });
+    node.addEventListener('touchend', end);
+    node.addEventListener('touchcancel', end);
+    node.addEventListener('mousedown', md);
+    window.addEventListener('mousemove', mm);
+    window.addEventListener('mouseup', end);
+    return () => {
+      node.removeEventListener('touchstart', ts);
+      node.removeEventListener('touchmove', tm);
+      node.removeEventListener('touchend', end);
+      node.removeEventListener('touchcancel', end);
+      node.removeEventListener('mousedown', md);
+      window.removeEventListener('mousemove', mm);
+      window.removeEventListener('mouseup', end);
+    };
+  }, [scroll]);
+
+  const indicatorHeight = refreshingAll ? 56 : pull;
   const body = <FadeIn style={scroll ? undefined : styles.fill}>{children}</FadeIn>;
   const content = scroll ? (
     <ScrollView
+      ref={scrollRef}
       contentContainerStyle={[
         styles.scrollContent,
         styles.column,
@@ -57,12 +143,24 @@ export function Screen({
       ]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
+      // Phones: the native pull-to-refresh spinner. Web draws its own indicator below.
       refreshControl={
-        onRefresh ? (
-          <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={colors.text} />
-        ) : undefined
+        Platform.OS === 'web' ? undefined : (
+          <RefreshControl refreshing={refreshingAll} onRefresh={trigger} tintColor={colors.text} />
+        )
       }
     >
+      {Platform.OS === 'web' && indicatorHeight > 0 ? (
+        <View style={{ height: indicatorHeight, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+          {refreshingAll ? (
+            <ActivityIndicator color={colors.accent} />
+          ) : (
+            <Text style={{ color: colors.textMuted, fontSize: 13, fontWeight: '600' }}>
+              {pull >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull to refresh'}
+            </Text>
+          )}
+        </View>
+      ) : null}
       {body}
     </ScrollView>
   ) : (

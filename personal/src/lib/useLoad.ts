@@ -1,6 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { errorMessage } from './format';
+import { registerRefresher } from './refreshBus';
 
 /**
  * Loads data every time the screen gains focus (so a payment made elsewhere
@@ -43,6 +44,9 @@ export function useLoad<T>(fetcher: () => Promise<T>, errorFallback = 'Could not
       };
     }, [run]),
   );
+
+  // Joins the app-wide pull-to-refresh, so this data reloads together with the screen being pulled.
+  useEffect(() => registerRefresher(() => run(true, () => false)), [run]);
 
   const refresh = useCallback(() => {
     void run(true, () => false);
