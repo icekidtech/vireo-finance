@@ -11,6 +11,7 @@ import { Button, Card, ErrorBanner, Field, Header, ListRow, Loading, NoticeBanne
 import FilePicker from '../components/FilePicker';
 import SelfieCapture from '../components/SelfieCapture';
 import { pickDocument, type PickedFile } from '../lib/documents';
+import { clearDrafts, usePersistedState } from '../lib/sessionState';
 import { colors, spacing, type } from '../theme';
 
 type Props = StackScreenProps<RootStackParamList, 'Verify'>;
@@ -41,15 +42,16 @@ export default function VerifyScreen({ navigation }: Props) {
   }, 'Could not load your verification status');
   // Pre-filled from the name given at signup; still editable, since the BVN record must match exactly.
   const { user } = useAuth();
-  const [firstName, setFirstName] = useState(() => splitFullName(user?.name).firstName);
-  const [lastName, setLastName] = useState(() => splitFullName(user?.name).lastName);
-  const [dob, setDob] = useState('');
+  // Names, date of birth and CAC details survive a page reload (web). The BVN, selfie and documents never do.
+  const [firstName, setFirstName] = usePersistedState('verify.firstName', splitFullName(user?.name).firstName);
+  const [lastName, setLastName] = usePersistedState('verify.lastName', splitFullName(user?.name).lastName);
+  const [dob, setDob] = usePersistedState('verify.dob', '');
   const [bvn, setBvn] = useState('');
   const [selfie, setSelfie] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [certificate, setCertificate] = useState<PickedFile | null>(null);
-  const [cac, setCac] = useState('');
-  const [tin, setTin] = useState('');
+  const [cac, setCac] = usePersistedState('verify.cac', '');
+  const [tin, setTin] = usePersistedState('verify.tin', '');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<VerificationOutcome | null>(null);
@@ -67,6 +69,7 @@ export default function VerifyScreen({ navigation }: Props) {
     try {
       await work();
       setOutcome(await api.checkMerchantVerification());
+      clearDrafts('verify.');
       refresh();
     } catch (e) {
       setActionError(errorMessage(e, fallback));

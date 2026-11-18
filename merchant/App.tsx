@@ -1,5 +1,7 @@
 import { ActivityIndicator, Platform, Text, View } from 'react-native';
-import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, type NavigationState } from '@react-navigation/native';
+import { useMemo } from 'react';
+import { loadNavState, saveNavState } from './src/lib/sessionState';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
@@ -73,6 +75,8 @@ function Tabs() {
 
 function AppNavigator() {
   const { token, isLoading } = useAuth();
+  // Read when the signed-in navigator mounts (page load, or right after sign-in), never a stale copy from before sign-out.
+  const initialNavState = useMemo(() => (token ? loadNavState<NavigationState>() : undefined), [token]);
 
   if (isLoading) {
     return (
@@ -83,7 +87,14 @@ function AppNavigator() {
   }
 
   const navigator = (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer
+      theme={navTheme}
+      // After a reload (web), reopen the screen the user was on instead of Home. Signed-in only.
+      initialState={token ? initialNavState : undefined}
+      onStateChange={(state) => {
+        if (token && state) saveNavState(state);
+      }}
+    >
       {/* cardStyle flex:1 gives screens a bounded height on web; without it ScrollViews grow to their content and never scroll. */}
       <Stack.Navigator screenOptions={{ headerShown: false, cardStyle: { flex: 1 } }}>
         {!token ? (

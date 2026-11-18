@@ -8,6 +8,7 @@ import { errorMessage, groupAmountInput } from '../lib/format';
 import type { RootStackParamList, TabParamList } from '../navigation';
 import { Button, ErrorBanner, FitText, Keypad, Screen, applyKey } from '../components/ui';
 import { colors, radius, spacing, type } from '../theme';
+import { usePersistedState } from '../lib/sessionState';
 
 type Props = CompositeScreenProps<
   BottomTabScreenProps<TabParamList, 'Charge'>,
@@ -16,8 +17,9 @@ type Props = CompositeScreenProps<
 
 /** Cash App-style charge entry: big amount, keypad, one primary action. */
 export default function CreateOrderScreen({ navigation }: Props) {
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
+  // Kept across a page reload (web) until the request is created.
+  const [amount, setAmount] = usePersistedState('charge.amount', '');
+  const [note, setNote] = usePersistedState('charge.note', '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

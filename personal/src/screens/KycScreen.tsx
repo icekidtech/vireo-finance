@@ -10,6 +10,7 @@ import { Button, Card, ErrorBanner, Field, Header, ListRow, Loading, NoticeBanne
 import FilePicker from '../components/FilePicker';
 import SelfieCapture from '../components/SelfieCapture';
 import { pickDocument, type PickedFile } from '../lib/documents';
+import { clearDrafts, usePersistedState } from '../lib/sessionState';
 import { colors, spacing, type } from '../theme';
 
 type Props = StackScreenProps<RootStackParamList, 'Kyc'>;
@@ -40,14 +41,15 @@ export default function KycScreen({ navigation }: Props) {
   const data = all?.status;
   // Pre-filled from the name given at signup; still editable, since the BVN record must match exactly.
   const { user } = useAuth();
-  const [firstName, setFirstName] = useState(() => splitFullName(user?.name).firstName);
-  const [lastName, setLastName] = useState(() => splitFullName(user?.name).lastName);
-  const [dob, setDob] = useState('');
+  // Names, date of birth and address survive a page reload (web). The BVN, NIN, selfie and documents never do.
+  const [firstName, setFirstName] = usePersistedState('kyc.firstName', splitFullName(user?.name).firstName);
+  const [lastName, setLastName] = usePersistedState('kyc.lastName', splitFullName(user?.name).lastName);
+  const [dob, setDob] = usePersistedState('kyc.dob', '');
   const [bvn, setBvn] = useState('');
   const [nin, setNin] = useState('');
   const [idFront, setIdFront] = useState<PickedFile | null>(null);
   const [idBack, setIdBack] = useState<PickedFile | null>(null);
-  const [address, setAddress] = useState('');
+  const [address, setAddress] = usePersistedState('kyc.address', '');
   const [proof, setProof] = useState<PickedFile | null>(null);
   const [selfie, setSelfie] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
@@ -72,6 +74,7 @@ export default function KycScreen({ navigation }: Props) {
       setBvn('');
       setNin('');
       setSelfie(null);
+      clearDrafts('kyc.');
       refresh();
     } catch (e) {
       setSelfie(null); // a fresh selfie is needed for the next attempt

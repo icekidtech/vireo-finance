@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import * as storage from '../lib/storage';
+import { clearSessionState } from '../lib/sessionState';
 import { api } from '../api';
 import type { PublicUser } from '../types';
 
@@ -57,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    clearSessionState(); // forget the saved screen and drafts so the next sign-in starts clean
     setTokenState(null);
     setUser(null);
     api.clearToken();

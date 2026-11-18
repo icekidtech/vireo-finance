@@ -9,6 +9,7 @@ import type { RootStackParamList } from '../navigation';
 import PinPad from '../components/PinPad';
 import PinSetup from '../components/PinSetup';
 import { Button, ErrorBanner, Field, Header, Loading, NoticeBanner, Screen } from '../components/ui';
+import { Pop } from '../components/motion';
 import { colors, spacing, type } from '../theme';
 
 type Props = StackScreenProps<RootStackParamList, 'Pin'>;
@@ -50,14 +51,6 @@ export default function PinScreen({ navigation }: Props) {
   };
 
   const body = (() => {
-    if (stage === 'done') {
-      return (
-        <View style={{ gap: spacing.lg }}>
-          <NoticeBanner tone="success" message={info} />
-          <Button title="Done" variant="accent" onPress={() => navigation.goBack()} />
-        </View>
-      );
-    }
     if (stage === 'current') {
       return (
         <PinPad
@@ -108,9 +101,25 @@ export default function PinScreen({ navigation }: Props) {
     );
   })();
 
+  if (stage === 'done') {
+    // scroll={false} gives the body a bounded height so the content centres on the screen.
+    return (
+      <Screen background={colors.accent} scroll={false}>
+        <View style={styles.doneWrap}>
+          <Pop style={styles.tick}>
+            <Text style={styles.tickText}>✓</Text>
+          </Pop>
+          <Text style={styles.doneTitle}>PIN saved</Text>
+          <Text style={styles.doneBody}>{info}</Text>
+        </View>
+        <Button title="Done" onPress={() => navigation.goBack()} style={{ marginBottom: spacing.xl }} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
-      <Header title="Transaction PIN" onBack={() => (stage === 'menu' || stage === 'done' ? navigation.goBack() : setStage('menu'))} />
+      <Header title="Transaction PIN" onBack={() => (stage === 'menu' ? navigation.goBack() : setStage('menu'))} />
       <ErrorBanner message={error ?? pinError} />
       {body}
     </Screen>
@@ -150,5 +159,10 @@ function ResetNewPin({ code, onDone, onBadCode }: { code: string; onDone: () => 
 }
 
 const styles = StyleSheet.create({
+  doneWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingHorizontal: spacing.lg },
+  tick: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.black, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
+  tickText: { color: colors.accent, fontSize: 48, fontWeight: '800' },
+  doneTitle: { ...type.display, color: colors.black, textAlign: 'center' },
+  doneBody: { ...type.body, color: colors.black, textAlign: 'center' },
   lead: { ...type.body, color: colors.textMuted, marginBottom: spacing.xl },
 });

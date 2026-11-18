@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import * as Crypto from 'expo-crypto';
-import type { CompositeScreenProps } from '@react-navigation/native';
+import { useFocusEffect, type CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
@@ -28,6 +28,7 @@ import { Pop } from '../components/motion';
 import QrScanner from '../components/QrScanner';
 import PinPad from '../components/PinPad';
 import BankPicker, { type Bank } from '../components/BankPicker';
+import { clearDrafts, loadDraft, saveDraft, usePersistedState } from '../lib/sessionState';
 import { colors, spacing, type } from '../theme';
 
 type Props = CompositeScreenProps<
@@ -39,21 +40,25 @@ type Kind = 'internal' | 'bank' | 'merchant';
 type Stage = 'amount' | 'recipient' | 'review' | 'done';
 
 export default function PayScreen({ navigation, route }: Props) {
-  const [kind, setKind] = useState<Kind>('internal');
-  const [stage, setStage] = useState<Stage>('amount');
-  const [amount, setAmount] = useState('');
-  const [recipient, setRecipient] = useState('');
+  // The form survives a page reload (web). Review/done are not saved: they depend on a server-side draft.
+  const [kind, setKind] = usePersistedState<Kind>('pay.kind', 'internal');
+  const [stage, setStage] = useState<Stage>(() => {
+    const saved = loadDraft<Stage>('pay.stage');
+    return saved === 'recipient' ? 'recipient' : 'amount';
+  });
+  const [amount, setAmount] = usePersistedState('pay.amount', '');
+  const [recipient, setRecipient] = usePersistedState('pay.recipient', '');
   const [banks, setBanks] = useState<Bank[]>([]);
   const [banksLoading, setBanksLoading] = useState(false);
   // Bumped by "Retry"; the effect never re-runs on its own after a failure.
   const [banksAttempt, setBanksAttempt] = useState(0);
   const [banksFailed, setBanksFailed] = useState(false);
-  const [bank, setBank] = useState<Bank | null>(null);
+  const [bank, setBank] = usePersistedState<Bank | null>('pay.bank', null);
   const [accountName, setAccountName] = useState<string | null>(null);
   const [accountInternal, setAccountInternal] = useState(false);
   const [resolving, setResolving] = useState(false);
-  const [accountNumber, setAccountNumber] = useState('');
-  const [orderInput, setOrderInput] = useState('');
+  const [accountNumber, setAccountNumber] = usePersistedState('pay.accountNumber', '');
+  const [orderInput, setOrderInput] = usePersistedState('pay.orderInput', '');
   const [manual, setManual] = useState(false);
   const [order, setOrder] = useState<MerchantOrder | null>(null);
   const [draft, setDraft] = useState<TransferDraft | null>(null);
@@ -78,15 +83,22 @@ export default function PayScreen({ navigation, route }: Props) {
     };
   }, []);
 
-  // What can confirm a payment on this phone: fingerprint/face, and/or a PIN.
   useEffect(() => {
-    let cancelled = false;
-    biometricAvailable().then((v) => !cancelled && setBioAvailable(v));
-    api.getPinStatus().then((s) => !cancelled && setPinSet(s.set)).catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
+    if (stage === 'amount' || stage === 'recipient') saveDraft('pay.stage', stage);
   }, [stage]);
+
+  // What can confirm a payment on this phone: fingerprint/face, and/or a PIN. Re-read every time the screen
+  // is shown again (e.g. coming back from setting a PIN), not just when this screen first mounts.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      biometricAvailable().then((v) => !cancelled && setBioAvailable(v));
+      api.getPinStatus().then((s) => !cancelled && setPinSet(s.set)).catch(() => undefined);
+      return () => {
+        cancelled = true;
+      };
+    }, [stage]),
+  );
 
   // Deep link / navigation param: pre-fill a merchant order reference.
   const presetRef = route.params?.orderReference;
@@ -220,6 +232,7 @@ export default function PayScreen({ navigation, route }: Props) {
   };
 
   const finishPayment = (result: { transfer: Transfer }, by: 'biometric' | 'pin') => {
+    clearDrafts('pay.'); // the payment is done: a reload must not bring the same form back
     setApprovedBy(by);
     setSent(result.transfer);
     setPinOpen(false);

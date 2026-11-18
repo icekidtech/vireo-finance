@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, FlatList, Text, TextInput, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
 import { approveAndSign, biometricAvailable, ensureDeviceRegistered, signWithoutBiometric } from '../lib/deviceKey';
@@ -37,10 +38,17 @@ export default function AssistantScreen({ navigation }: Props) {
   const [pinBusy, setPinBusy] = useState(false);
 
   // How a payment prepared here can be confirmed on this phone: fingerprint/face, or the PIN.
-  useEffect(() => {
-    biometricAvailable().then(setBioAvailable);
-    api.getPinStatus().then((s) => setPinSet(s.set)).catch(() => undefined);
-  }, []);
+  // Re-read whenever the screen is shown again (e.g. after setting a PIN).
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      biometricAvailable().then((v) => !cancelled && setBioAvailable(v));
+      api.getPinStatus().then((s) => !cancelled && setPinSet(s.set)).catch(() => undefined);
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
   const list = useRef<FlatList<Item>>(null);
   const counter = useRef(0);
   const nextId = () => `m${(counter.current += 1)}`;

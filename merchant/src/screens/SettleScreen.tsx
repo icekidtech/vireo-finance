@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
 import { approveAndSign, biometricAvailable, ensureDeviceRegistered, signWithoutBiometric } from '../lib/deviceKey';
@@ -43,15 +44,18 @@ export default function SettleScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // What can confirm a payout on this phone: fingerprint/face, and/or a PIN.
-  useEffect(() => {
-    let cancelled = false;
-    biometricAvailable().then((v) => !cancelled && setBioAvailable(v));
-    api.getPinStatus().then((s) => !cancelled && setPinSet(s.set)).catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [stage]);
+  // What can confirm a payout on this phone: fingerprint/face, and/or a PIN. Re-read every time the screen
+  // is shown again (e.g. coming back from setting a PIN), not just when this screen first mounts.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      biometricAvailable().then((v) => !cancelled && setBioAvailable(v));
+      api.getPinStatus().then((s) => !cancelled && setPinSet(s.set)).catch(() => undefined);
+      return () => {
+        cancelled = true;
+      };
+    }, [stage]),
+  );
 
   const merchant = dash.data?.merchant;
   const available = dash.data?.balance.available ?? '0.00';
