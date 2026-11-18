@@ -15,7 +15,7 @@ module.exports = {
     node: true,
     jest: true,
   },
-  ignorePatterns: ['.eslintrc.cjs', 'dist', 'node_modules'],
+  ignorePatterns: ['.eslintrc.cjs', 'ecosystem.config.js', 'dist', 'node_modules'],
   rules: {
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/explicit-module-boundary-types': 'off',
