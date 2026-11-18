@@ -32,6 +32,8 @@ export default function AssistantScreen({ navigation }: Props) {
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [sending, setSending] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [inputHeight, setInputHeight] = useState(30);
+  const [inputWidth, setInputWidth] = useState(0);
   const { user } = useAuth();
   const [bioAvailable, setBioAvailable] = useState(false);
   const [pinSet, setPinSet] = useState(false);
@@ -59,6 +61,7 @@ export default function AssistantScreen({ navigation }: Props) {
     const message = (override ?? text).trim();
     if (!message || sending) return;
     setText('');
+    setInputHeight(30);
     setItems((prev) => [...prev, { id: nextId(), kind: 'user', text: message }]);
     setSending(true);
     try {
@@ -234,14 +237,40 @@ export default function AssistantScreen({ navigation }: Props) {
             <TouchableOpacity style={styles.plus} onPress={() => setShowSuggestions((v) => !v)} accessibilityLabel="Suggestions">
               <Text style={styles.plusText}>{showSuggestions ? '×' : '+'}</Text>
             </TouchableOpacity>
+            {/* Invisible copy of the text, laid out at the field's width: its height is how tall the field needs to be.
+                Measuring this (instead of the field) means the field also shrinks when lines are deleted. */}
+            {inputWidth > 0 ? (
+              <Text
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                style={[styles.measure, { width: Math.max(inputWidth - 8, 10) }]}
+                onLayout={(e) => setInputHeight(Math.min(Math.max(Math.ceil(e.nativeEvent.layout.height), 30), 120))}
+              >
+                {`${text}\u200B`}
+              </Text>
+            ) : null}
             <TextInput
-              style={styles.input}
+              style={[styles.input, { height: inputHeight + 16 }]}
+              onLayout={(e) => setInputWidth(e.nativeEvent.layout.width)}
               value={text}
-              onChangeText={setText}
+              onChangeText={(v) => {
+                setText(v);
+                if (!v) setInputHeight(30); // emptied (or cleared by sending): back to a single line
+              }}
               placeholder="Ask anything"
               placeholderTextColor="rgba(255,255,255,0.7)"
-              onSubmitEditing={() => send()}
-              returnKeyType="send"
+              multiline
+              // One line to start with; it only grows once there is text to fit (web would otherwise start tall).
+              numberOfLines={1}
+              {...({ rows: 1 } as object)}
+              // Enter sends and Shift+Enter starts a new line (web). On phones the keyboard's return key adds a line and the arrow sends.
+              onKeyPress={(e) => {
+                const ev = e.nativeEvent as unknown as { key: string; shiftKey?: boolean };
+                if (Platform.OS === 'web' && ev.key === 'Enter' && !ev.shiftKey) {
+                  (e as unknown as { preventDefault: () => void }).preventDefault();
+                  send();
+                }
+              }}
               maxLength={2000}
             />
             <TouchableOpacity
@@ -287,19 +316,31 @@ const styles = StyleSheet.create({
   chipText: { color: '#FFFFFF', fontSize: 14, fontWeight: '500' },
   composer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     gap: spacing.md,
     marginHorizontal: spacing.xl,
     marginBottom: spacing.md,
     padding: 8,
-    borderRadius: 999,
+    borderRadius: 34,
     backgroundColor: GLASS,
     borderWidth: 1,
     borderColor: GLASS_BORDER,
   },
   plus: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#16C247', alignItems: 'center', justifyContent: 'center' },
   plusText: { color: '#FFFFFF', fontSize: 28, fontWeight: '300', marginTop: -2 },
-  input: { flex: 1, color: '#FFFFFF', fontSize: 18, paddingVertical: 8 },
+  // No box or browser focus ring inside the pill: the pill itself is the field.
+  input: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 18,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    lineHeight: 24,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    ...({ outlineStyle: 'none', outlineWidth: 0 } as object),
+  },
+  measure: { position: 'absolute', opacity: 0, fontSize: 18, lineHeight: 24, pointerEvents: 'none' },
   sendPill: { width: 66, height: 46, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
   sendText: { color: '#FFFFFF', fontSize: 22, fontWeight: '600' },
   pinBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
