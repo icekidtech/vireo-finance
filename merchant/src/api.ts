@@ -231,7 +231,7 @@ export class VireoApi {
 
   /** Server-side account name resolution; the name is never typed by the user. */
   async lookupBankAccount(payload: { bankCode: string; accountNumber: string }) {
-    const { data } = await this.client.post<{ accountName: string; accountNumber: string; bankCode: string }>(
+    const { data } = await this.client.post<{ accountName: string; accountNumber: string; bankCode: string; internal: boolean }>(
       '/transfers/bank-lookup',
       payload,
     );

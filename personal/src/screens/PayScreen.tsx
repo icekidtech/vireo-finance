@@ -50,6 +50,7 @@ export default function PayScreen({ navigation, route }: Props) {
   const [banksFailed, setBanksFailed] = useState(false);
   const [bank, setBank] = useState<Bank | null>(null);
   const [accountName, setAccountName] = useState<string | null>(null);
+  const [accountInternal, setAccountInternal] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [accountNumber, setAccountNumber] = useState('');
   const [orderInput, setOrderInput] = useState('');
@@ -139,13 +140,18 @@ export default function PayScreen({ navigation, route }: Props) {
   // Resolve the account holder's name once bank + 10-digit account are set.
   useEffect(() => {
     setAccountName(null);
+    setAccountInternal(false);
     if (kind !== 'bank' || !bank || !/^\d{10}$/.test(accountNumber)) return;
     let cancelled = false;
     setResolving(true);
     setError(null);
     api
       .lookupBankAccount({ bankCode: bank.code, accountNumber })
-      .then((r) => !cancelled && setAccountName(r.accountName))
+      .then((r) => {
+        if (cancelled) return;
+        setAccountName(r.accountName);
+        setAccountInternal(r.internal);
+      })
       .catch((e) => !cancelled && setError(errorMessage(e, 'Could not verify this account')))
       .finally(() => !cancelled && setResolving(false));
     return () => {
@@ -393,6 +399,7 @@ export default function PayScreen({ navigation, route }: Props) {
               <Card>
                 <Text style={styles.resolvedLabel}>ACCOUNT NAME</Text>
                 <Text style={styles.resolvedName}>{accountName}</Text>
+                {accountInternal ? <Text style={styles.hint}>A Vireo account: sent instantly with no fee.</Text> : null}
               </Card>
             ) : null}
           </>

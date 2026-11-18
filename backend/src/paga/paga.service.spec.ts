@@ -84,3 +84,39 @@ describe('PagaService.validateBankAccount', () => {
     expect((err as unknown as { getStatus(): number }).getStatus()).toBe(400);
   });
 });
+
+describe('PagaService logging', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('never writes the API credentials, request bodies or response bodies to the log', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          responseCode: 0,
+          banks: [{ name: 'Access Bank', uuid: 'u1' }],
+          destinationAccountHolderNameAtBank: 'ADA OBI',
+        }),
+    } as Response);
+    const service = new PagaService(config as never);
+    const lines: string[] = [];
+    for (const m of ['log', 'error', 'warn', 'debug'] as const) {
+      jest
+        .spyOn((service as any).logger, m)
+        .mockImplementation((...args: unknown[]) => void lines.push(args.join(' ')));
+    }
+    await service.listBanks();
+    await service.validateBankAccount({
+      bankCode: '11111111-1111-4111-8111-111111111111',
+      accountNumber: '0123456789',
+      amountMinor: 100n,
+      reference: 'r1',
+    });
+    const log = lines.join('\n');
+    for (const secret of ['sec', 'hk', '0123456789', 'ADA OBI', 'principal', 'credentials']) {
+      expect(log).not.toContain(secret);
+    }
+    expect(log).toMatch(/Paga business getBanks -> 200/);
+  });
+});

@@ -70,6 +70,57 @@ export class TransfersService {
     @Optional() private readonly pins?: PinService,
   ) {}
 
+  /**
+   * Account numbers we issue (a wallet's or a business's deposit account) all belong to
+   * OUR Paga business, so Paga refuses to pay them ("sender and receiver may not share the
+   * same account"). Money for them moves on our own ledger instead: instant and free.
+   * Returns null for any account that is not ours.
+   */
+  private async resolveOwnAccount(
+    bankCode: string,
+    accountNumber: string,
+    callerId: string,
+  ): Promise<{
+    accountId: string;
+    name: string;
+    recipientUserId: string;
+    scope: 'personal' | 'merchant';
+  } | null> {
+    const own = await this.accounts.findOwnDepositAccount(accountNumber);
+    if (!own) return null;
+    // The number only means "ours" when the chosen bank is our Paga account's bank.
+    const banks = await this.paga.listBanks();
+    const pagaBank = banks.find((b) => b.name.trim().toLowerCase() === 'paga');
+    if (!pagaBank || pagaBank.uuid.toLowerCase() !== bankCode.toLowerCase()) return null;
+
+    const walletOwner = await this.accounts.walletOwner(own.accountId);
+    if (walletOwner) {
+      if (walletOwner === callerId) {
+        throw new BadRequestException(
+          'That is your own wallet account number. You cannot send money to yourself.',
+        );
+      }
+      const owner = await this.users.findOne({ where: { id: walletOwner } });
+      if (!owner) return null;
+      return {
+        accountId: own.accountId,
+        name: owner.name,
+        recipientUserId: owner.id,
+        scope: 'personal',
+      };
+    }
+    const merchant = await this.merchants.findOne({
+      where: { settlementAccountId: own.accountId },
+    });
+    if (!merchant) return null;
+    return {
+      accountId: own.accountId,
+      name: merchant.businessName,
+      recipientUserId: own.userId,
+      scope: 'merchant',
+    };
+  }
+
   /** Banks Paga can pay out to, for the client's bank picker. */
   async listBanks() {
     const banks = await this.paga.listBanks();
@@ -95,6 +146,15 @@ export class TransfersService {
     recent.push(now);
     this.lookups.set(userId, recent);
 
+    const own = await this.resolveOwnAccount(dto.bankCode, dto.accountNumber, userId);
+    if (own) {
+      return {
+        accountName: own.name,
+        accountNumber: dto.accountNumber,
+        bankCode: dto.bankCode,
+        internal: true,
+      };
+    }
     const validated = await this.paga.validateBankAccount({
       bankCode: dto.bankCode,
       accountNumber: dto.accountNumber,
@@ -106,6 +166,7 @@ export class TransfersService {
       accountName: validated.accountName,
       accountNumber: validated.accountNumber,
       bankCode: dto.bankCode,
+      internal: false,
     };
   }
 
@@ -145,6 +206,9 @@ export class TransfersService {
     let bankUuid: string | null = null;
     let fee = 0n;
     let order: MerchantOrder | null = null;
+    let effectiveType: TransferType = dto.type;
+    let internalScope: 'personal' | 'merchant' | null = null;
+    let internalRecipientUserId: string | null = null;
 
     if (dto.type === TransferType.INTERNAL) {
       const resolved = await this.resolveInternalRecipient(userId, dto);
@@ -156,18 +220,30 @@ export class TransfersService {
       if (!dto.bankCode || !dto.accountNumber) {
         throw new BadRequestException('bankCode and accountNumber are required for bank transfers');
       }
-      const validated = await this.paga.validateBankAccount({
-        bankCode: dto.bankCode,
-        accountNumber: dto.accountNumber,
-        amountMinor: amount,
-        reference: `val_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
-      });
-      recipientName = validated.accountName;
-      recipientBankCode = validated.bankCode;
-      recipientAccountNumber = validated.accountNumber;
-      bankUuid = validated.bankUuid;
-      recipientKey = `bank:${validated.bankUuid}:${validated.accountNumber}`;
-      fee = BANK_TRANSFER_FEE_MINOR;
+      const own = await this.resolveOwnAccount(dto.bankCode, dto.accountNumber, userId);
+      if (own) {
+        // One of our own accounts: settle on the ledger, not through Paga.
+        effectiveType = TransferType.INTERNAL;
+        destinationAccountId = own.accountId;
+        recipientName = own.name;
+        recipientAccountNumber = dto.accountNumber;
+        recipientKey = `internal:${own.accountId}`;
+        internalScope = own.scope;
+        internalRecipientUserId = own.recipientUserId;
+      } else {
+        const validated = await this.paga.validateBankAccount({
+          bankCode: dto.bankCode,
+          accountNumber: dto.accountNumber,
+          amountMinor: amount,
+          reference: `val_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
+        });
+        recipientName = validated.accountName;
+        recipientBankCode = validated.bankCode;
+        recipientAccountNumber = validated.accountNumber;
+        bankUuid = validated.bankUuid;
+        recipientKey = `bank:${validated.bankUuid}:${validated.accountNumber}`;
+        fee = BANK_TRANSFER_FEE_MINOR;
+      }
     } else if (dto.type === TransferType.MERCHANT) {
       if (!dto.orderReference) {
         throw new BadRequestException('orderReference is required for merchant payments');
@@ -211,7 +287,7 @@ export class TransfersService {
     const transfer = await this.transfers.save(
       this.transfers.create({
         idempotencyKey: dto.idempotencyKey,
-        type: dto.type,
+        type: effectiveType,
         status: TransferStatus.DRAFT,
         sourceAccountId: source.id,
         destinationAccountId,
@@ -227,6 +303,7 @@ export class TransfersService {
           recipientKey,
           channel,
           ...(bankUuid ? { bankUuid } : {}),
+          ...(internalScope ? { internalScope, internalRecipientUserId } : {}),
           ...(order ? { orderReference: order.reference } : {}),
         },
       }),
@@ -236,7 +313,7 @@ export class TransfersService {
       userId,
       deviceId: dto.deviceId,
       type:
-        dto.type === TransferType.MERCHANT
+        effectiveType === TransferType.MERCHANT
           ? ChallengeType.MERCHANT_PAYMENT
           : ChallengeType.TRANSFER,
       payload: this.buildChallengePayload(transfer),
@@ -343,7 +420,31 @@ export class TransfersService {
         : null,
       transfer.initiatedByUserId,
     ]);
+    await this.notifyInternalRecipient(transfer);
     return { transfer: presentTransfer(transfer) };
+  }
+
+  /** Tells the person (or business) who just received money which side of their login it landed on. */
+  private async notifyInternalRecipient(transfer: Transfer): Promise<void> {
+    try {
+      const meta = (transfer.metadata ?? {}) as {
+        internalScope?: string;
+        internalRecipientUserId?: string;
+      };
+      let recipientId = meta.internalRecipientUserId ?? null;
+      let scope: 'personal' | 'merchant' =
+        meta.internalScope === 'merchant' ? 'merchant' : 'personal';
+      if (!recipientId && transfer.destinationAccountId) {
+        recipientId = await this.accounts.walletOwner(transfer.destinationAccountId);
+        scope = 'personal';
+      }
+      if (!recipientId) return;
+      await this.notifications.creditReceived(recipientId, BigInt(transfer.amount), { scope });
+    } catch (error) {
+      this.logger.warn(
+        `Recipient notification failed for transfer=${transfer.id}: ${String(error)}`,
+      );
+    }
   }
 
   private async reconcileCaps(userIds: (string | null | undefined)[]): Promise<void> {

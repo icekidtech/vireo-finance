@@ -139,13 +139,17 @@ describe('TransfersService bank lookup', () => {
     accountNumber: '0123456789',
     amount: '200',
   };
-  function make(paga: any) {
+  const noOwnAccounts = {
+    findOwnDepositAccount: jest.fn(async () => null),
+    walletOwner: jest.fn(async () => null),
+  };
+  function make(paga: any, accounts: any = noOwnAccounts, users: any = {}, merchants: any = {}) {
     return new TransfersService(
       {} as any,
+      users,
+      merchants,
       {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
+      accounts,
       {} as any,
       {} as any,
       {} as any,
@@ -239,5 +243,175 @@ describe('TransfersService.submit PIN confirmation', () => {
     const { service } = make(pins);
     await service.submit('u1', 't1', 'sig', { approval: 'biometric' }).catch(() => undefined);
     expect(pins.verify).not.toHaveBeenCalled();
+  });
+});
+
+describe('TransfersService lookups of our own account numbers', () => {
+  const PAGA_BANK = 'AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA';
+  const ACCESS = '11111111-1111-4111-8111-111111111111';
+  const paga = {
+    listBanks: jest.fn(async () => [
+      { name: 'Access Bank', uuid: ACCESS },
+      { name: 'Paga', uuid: PAGA_BANK },
+    ]),
+    validateBankAccount: jest.fn(async () => ({
+      accountName: 'FROM PAGA',
+      accountNumber: '1',
+      bankUuid: ACCESS,
+    })),
+  };
+
+  function make(
+    own: { accountId: string; userId: string } | null,
+    walletOwner: string | null,
+    merchant: any = null,
+  ) {
+    const accounts = {
+      findOwnDepositAccount: jest.fn(async () => own),
+      walletOwner: jest.fn(async () => walletOwner),
+    };
+    const users = { findOne: jest.fn(async () => ({ id: 'owner', name: 'Ada Obi' })) };
+    const merchants = { findOne: jest.fn(async () => merchant) };
+    paga.validateBankAccount.mockClear();
+    return new TransfersService(
+      {} as any,
+      users as any,
+      merchants as any,
+      {} as any,
+      accounts as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      paga as any,
+      {} as any,
+    );
+  }
+  const lookup = (bankCode: string) => ({ bankCode, accountNumber: '2404324874' });
+
+  it("answers for another person's wallet number on our own ledger, without asking Paga", async () => {
+    const service = make({ accountId: 'w2', userId: 'owner' }, 'owner');
+    await expect(service.lookupBankAccount('me', lookup(PAGA_BANK))).resolves.toMatchObject({
+      accountName: 'Ada Obi',
+      internal: true,
+    });
+    expect(paga.validateBankAccount).not.toHaveBeenCalled();
+  });
+
+  it('shows the business name for a merchant balance number', async () => {
+    const service = make({ accountId: 'm1', userId: 'owner' }, null, {
+      businessName: 'Ice Stores',
+    });
+    await expect(service.lookupBankAccount('me', lookup(PAGA_BANK))).resolves.toMatchObject({
+      accountName: 'Ice Stores',
+      internal: true,
+    });
+  });
+
+  it('refuses your own wallet number', async () => {
+    const service = make({ accountId: 'w1', userId: 'me' }, 'me');
+    await expect(service.lookupBankAccount('me', lookup(PAGA_BANK))).rejects.toThrow(/own wallet/);
+  });
+
+  it('only treats the number as ours when the chosen bank is Paga; any other bank goes to Paga', async () => {
+    const service = make({ accountId: 'w2', userId: 'owner' }, 'owner');
+    await expect(service.lookupBankAccount('me', lookup(ACCESS))).resolves.toMatchObject({
+      accountName: 'FROM PAGA',
+      internal: false,
+    });
+    expect(paga.validateBankAccount).toHaveBeenCalled();
+  });
+
+  it('numbers that are not ours go to the bank as before', async () => {
+    const service = make(null, null);
+    await expect(service.lookupBankAccount('me', lookup(PAGA_BANK))).resolves.toMatchObject({
+      internal: false,
+    });
+  });
+});
+
+describe('TransfersService.createDraft to one of our own account numbers', () => {
+  const PAGA_BANK = 'AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA';
+
+  function make(own: { accountId: string; userId: string } | null) {
+    const saved: any[] = [];
+    const transfers = {
+      findOne: jest.fn(async () => null),
+      create: jest.fn((v: any) => ({ id: 't1', ...v })),
+      save: jest.fn(async (v: any) => {
+        saved.push({ ...v });
+        return v;
+      }),
+    };
+    const users = {
+      findOne: jest.fn(async ({ where }: any) => ({ id: where.id, name: 'Ada Obi', kycTier: 1 })),
+    };
+    const accounts = {
+      getWallet: jest.fn(async () => ({ id: 'w-me' })),
+      findOwnDepositAccount: jest.fn(async () => own),
+      walletOwner: jest.fn(async () => 'owner'),
+    };
+    const paga = {
+      listBanks: jest.fn(async () => [{ name: 'Paga', uuid: PAGA_BANK }]),
+      validateBankAccount: jest.fn(),
+    };
+    const risk = { preCheck: jest.fn(async () => undefined) };
+    const challenges = {
+      issue: jest.fn(async () => ({
+        id: 'c1',
+        payloadHash: 'h',
+        payload: {},
+        expiresAt: new Date(),
+        nonce: 'n',
+      })),
+    };
+    const service = new TransfersService(
+      transfers as any,
+      users as any,
+      {} as any,
+      {} as any,
+      accounts as any,
+      {} as any,
+      challenges as any,
+      risk as any,
+      paga as any,
+      {} as any,
+    );
+    return { service, transfers, paga, risk, saved };
+  }
+  const dto = {
+    type: 'bank' as any,
+    amount: '100.00',
+    idempotencyKey: 'abcdefgh1234',
+    deviceId: 'd',
+    bankCode: PAGA_BANK,
+    accountNumber: '2404324874',
+  };
+
+  it('becomes an internal, fee-free ledger transfer to that account, never a Paga payout', async () => {
+    const { service, paga, saved, risk } = make({ accountId: 'w-other', userId: 'owner' });
+    const result = await service.createDraft('me', dto);
+    expect(paga.validateBankAccount).not.toHaveBeenCalled();
+    expect(saved[0]).toMatchObject({
+      type: 'internal',
+      destinationAccountId: 'w-other',
+      fee: '0',
+      recipientName: 'Ada Obi',
+    });
+    expect(risk.preCheck).toHaveBeenCalledWith(
+      expect.objectContaining({ fee: 0n, recipientKey: 'internal:w-other' }),
+    );
+    expect(result.transfer.type).toBe('internal');
+  });
+
+  it('is still a bank payout for numbers that are not ours', async () => {
+    const { service, paga } = make(null);
+    paga.validateBankAccount.mockResolvedValue({
+      accountName: 'Test Customer',
+      accountNumber: '2404324874',
+      bankUuid: PAGA_BANK,
+      bankCode: PAGA_BANK,
+    });
+    await service.createDraft('me', dto);
+    expect(paga.validateBankAccount).toHaveBeenCalled();
   });
 });

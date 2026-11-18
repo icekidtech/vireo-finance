@@ -42,6 +42,14 @@ export class AccountsService {
     return manager ? work(manager) : this.dataSource.transaction(work);
   }
 
+  /** One of OUR deposit account numbers (a wallet's or a business's), or null for any outside number. */
+  async findOwnDepositAccount(
+    accountNumber: string,
+  ): Promise<{ accountId: string; userId: string } | null> {
+    const va = await this.virtualAccounts.findOne({ where: { accountNumber, status: 'active' } });
+    return va ? { accountId: va.accountId, userId: va.userId } : null;
+  }
+
   /** The user who owns a personal wallet account, or null for any other account. */
   async walletOwner(accountId: string): Promise<string | null> {
     const account = await this.accounts.findOne({ where: { id: accountId } });

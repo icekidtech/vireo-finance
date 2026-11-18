@@ -48,10 +48,6 @@ export class PagaService {
     const { firstName, lastName } = splitName(input.name);
     const callbackUrl = this.callbackUrl();
 
-    this.logger.log(
-      `Creating virtual account: ref=${referenceNumber}, name=${input.name}, phone=${input.phone}`,
-    );
-
     const raw = await this.collect(
       'registerPersistentPaymentAccount',
       {
@@ -71,7 +67,7 @@ export class PagaService {
       throw new BadGatewayException('Paga did not return a persistent account number');
     }
 
-    this.logger.log(`Virtual account created: ${accountNumber} for ${referenceNumber}`);
+    this.logger.log(`Virtual account created for ${referenceNumber}`);
 
     return {
       accountNumber,
@@ -417,19 +413,11 @@ export class PagaService {
     const hashKey = this.requiredHashKey();
     const hash = pagaHash(hashValues, hashKey);
 
-    this.logger.log(`[Paga collect ${operation}] Request body: ${JSON.stringify(body, null, 2)}`);
-    this.logger.log(`[Paga collect ${operation}] Hash values: ${JSON.stringify(hashValues)}`);
-    this.logger.log(
-      `[Paga collect ${operation}] Hash key length: ${hashKey.length}, Hash: ${hash.substring(0, 20)}...`,
-    );
-
     const raw = await this.send('collect', operation, body, {
       'content-type': 'application/json',
       authorization: `Basic ${credentials}`,
       hash,
     });
-
-    this.logger.log(`[Paga collect ${operation}] Response: ${JSON.stringify(raw, null, 2)}`);
 
     const code = String(raw.statusCode ?? '');
     if (code !== '0') {
@@ -462,12 +450,6 @@ export class PagaService {
       'accept-language': 'en',
     };
 
-    this.logger.log(`[Paga ${api} ${operation}] POST ${url}`);
-    this.logger.log(
-      `[Paga ${api} ${operation}] Headers: ${JSON.stringify({ ...requestHeaders, authorization: requestHeaders.authorization ? '[redacted]' : undefined, hash: requestHeaders.hash ? `${requestHeaders.hash.substring(0, 20)}...` : undefined }, null, 2)}`,
-    );
-    this.logger.log(`[Paga ${api} ${operation}] Body: ${JSON.stringify(body, null, 2)}`);
-
     const started = Date.now();
     let response: Response;
     try {
@@ -486,10 +468,8 @@ export class PagaService {
     const text = await response.text();
     const elapsed = Date.now() - started;
 
-    this.logger.log(
-      `[Paga ${api} ${operation}] Response status: ${response.status} (${elapsed}ms)`,
-    );
-    this.logger.log(`[Paga ${api} ${operation}] Response body: ${text}`);
+    // Status and timing only: requests carry the API credentials, and bodies carry account numbers and names.
+    this.logger.log(`Paga ${api} ${operation} -> ${response.status} ${elapsed}ms`);
 
     if (!response.ok) {
       let detail = text;
@@ -499,7 +479,9 @@ export class PagaService {
       } catch {
         // keep the raw body
       }
-      this.logger.error(`Paga ${api} ${operation} failed: ${response.status} ${text}`);
+      this.logger.error(
+        `Paga ${api} ${operation} failed: ${response.status} ${text.slice(0, 300)}`,
+      );
       throw new BadGatewayException(
         `Paga ${api} ${operation} failed (${response.status}): ${detail || 'unknown error'}`,
       );
