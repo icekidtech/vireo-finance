@@ -1,9 +1,13 @@
 import { ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
-import { AgentService } from './agent.service';
+import { AgentService, resolveBank } from './agent.service';
 
 const DEVICE = '11111111-1111-4111-8111-111111111111';
 
-function setup(opts: { enabled?: boolean; llmReplies: any[] }) {
+function setup(opts: {
+  enabled?: boolean;
+  llmReplies: any[];
+  banks?: { name: string; uuid: string }[];
+}) {
   const sessions = {
     create: jest.fn((v: unknown) => v),
     save: jest.fn(async () => ({ id: 'session-1', status: 'active', createdAt: new Date() })),
@@ -29,7 +33,7 @@ function setup(opts: { enabled?: boolean; llmReplies: any[] }) {
     {} as any,
     {} as any,
     transfers as any,
-    {} as any,
+    { listBanks: jest.fn(async () => opts.banks ?? []) } as any,
     llm as any,
   );
   return { service, llm, transfers };
@@ -129,5 +133,106 @@ describe('AgentService.chat', () => {
     await expect(
       service.chat('user-1', { message: 'hi', sessionId: 'someone-elses' }),
     ).rejects.toThrow(ForbiddenException);
+  });
+});
+
+describe('bank transfers through the assistant', () => {
+  const banks = [
+    { name: 'Access Bank', uuid: 'u-access' },
+    { name: 'Access Bank Ghana', uuid: 'u-ghana' },
+    { name: 'Zenith Bank', uuid: 'u-zenith' },
+    { name: 'First Bank', uuid: 'u-fb1' },
+    { name: 'First Bank of Nigeria', uuid: 'u-fb2' },
+  ];
+
+  it('drafts a bank transfer using the bank id from the server list, not from the model', async () => {
+    const { service, transfers } = setup({
+      banks,
+      llmReplies: [
+        {
+          content: null,
+          toolCalls: [
+            toolCall('create_bank_transfer_draft', {
+              amount: '2000.00',
+              bankName: 'zenith bank',
+              accountNumber: '0123456789',
+              bankCode: 'attacker-bank',
+              deviceId: 'attacker-device',
+            }),
+          ],
+        },
+        { content: 'Drafted.', toolCalls: [] },
+      ],
+    });
+    const result = await service.chat('user-1', {
+      message: 'send 2k to zenith 0123456789',
+      deviceId: DEVICE,
+    });
+    const dto = (transfers.createDraft.mock.calls as any[][])[0][1];
+    expect(dto).toMatchObject({
+      type: 'bank',
+      bankCode: 'u-zenith',
+      accountNumber: '0123456789',
+      deviceId: DEVICE,
+      amount: '2000.00',
+    });
+    expect((transfers.createDraft.mock.calls as any[][])[0][2]).toEqual({ channel: 'agent' });
+    expect(result.drafts).toHaveLength(1);
+  });
+
+  it('refuses a malformed account number and never reaches the transfer service', async () => {
+    const { service, transfers } = setup({
+      banks,
+      llmReplies: [
+        {
+          content: null,
+          toolCalls: [
+            toolCall('create_bank_transfer_draft', {
+              amount: '500',
+              bankName: 'Zenith Bank',
+              accountNumber: '12345',
+            }),
+          ],
+        },
+        { content: 'That account number looks wrong.', toolCalls: [] },
+      ],
+    });
+    await service.chat('user-1', { message: 'x', deviceId: DEVICE });
+    expect(transfers.createDraft).not.toHaveBeenCalled();
+  });
+
+  it('needs a signing device, like any draft', async () => {
+    const { service, transfers } = setup({
+      banks,
+      llmReplies: [
+        {
+          content: null,
+          toolCalls: [
+            toolCall('create_bank_transfer_draft', {
+              amount: '500',
+              bankName: 'Zenith Bank',
+              accountNumber: '0123456789',
+            }),
+          ],
+        },
+        { content: 'No device.', toolCalls: [] },
+      ],
+    });
+    await service.chat('user-1', { message: 'x' });
+    expect(transfers.createDraft).not.toHaveBeenCalled();
+  });
+
+  describe('resolveBank', () => {
+    it('prefers an exact name, ignoring case and punctuation', () => {
+      expect(resolveBank('ACCESS bank', banks).uuid).toBe('u-access');
+      expect(resolveBank('First Bank', banks).uuid).toBe('u-fb1');
+    });
+    it('accepts a unique partial name', () => {
+      expect(resolveBank('zenith', banks).uuid).toBe('u-zenith');
+    });
+    it('asks which bank when several match, and when none do', () => {
+      expect(() => resolveBank('first', banks)).toThrow(/Several banks match/);
+      expect(() => resolveBank('nonexistent', banks)).toThrow(/No supported bank/);
+    });
   });
 });

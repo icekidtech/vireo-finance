@@ -155,6 +155,8 @@ export interface ChatDraft {
   amount: string;
   fee: string;
   recipientName: string | null;
+  /** Set for bank transfers: the bank the money goes to. */
+  bank?: string | null;
   challenge: Challenge;
 }
 

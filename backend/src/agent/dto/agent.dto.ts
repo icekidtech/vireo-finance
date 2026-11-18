@@ -5,6 +5,7 @@ export const AGENT_TOOLS = [
   'list_transactions',
   'validate_recipient',
   'create_transfer_draft',
+  'create_bank_transfer_draft',
   'create_payment_request',
   'explain_fee',
 ] as const;
