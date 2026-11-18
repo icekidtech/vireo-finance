@@ -1,4 +1,5 @@
 import { IsIn, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { BANK_ID_MESSAGE, BANK_ID_PATTERN } from '../../common/bank-id';
 import { TransferType } from '../../common/enums';
 
 const AMOUNT_PATTERN = /^\d{1,15}(\.\d{1,2})?$/;
@@ -33,8 +34,9 @@ export class CreateTransferDraftDto {
   recipientHandle?: string;
 
   @IsOptional()
+  /** A bank id from the bank list (36 chars), or a sort code. */
   @IsString()
-  @Length(2, 16)
+  @Length(2, 40)
   bankCode?: string;
 
   @IsOptional()
@@ -63,8 +65,9 @@ export class SubmitTransferDto {
 }
 
 export class BankLookupDto {
-  /** Paga bank uuid, as returned by GET /transfers/banks. */
-  @IsUUID()
+  /** Paga bank id, as returned by GET /transfers/banks. */
+  @IsString()
+  @Matches(BANK_ID_PATTERN, { message: BANK_ID_MESSAGE })
   bankCode: string;
 
   @IsString()

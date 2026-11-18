@@ -1,5 +1,7 @@
 import { IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Min } from 'class-validator';
 
+import { BANK_ID_MESSAGE, BANK_ID_PATTERN } from '../../common/bank-id';
+
 const AMOUNT_PATTERN = /^\d{1,15}(\.\d{1,2})?$/;
 const HANDLE_PATTERN = /^[a-zA-Z0-9_]{3,60}$/;
 
@@ -14,7 +16,8 @@ export class OnboardMerchantDto {
 
   /** Paga bank id, as returned by GET /transfers/banks. */
   @IsOptional()
-  @IsUUID()
+  @IsString()
+  @Matches(BANK_ID_PATTERN, { message: BANK_ID_MESSAGE })
   settlementBankCode?: string;
 
   /** The account holder's name is never accepted from the client: the server resolves it. */
@@ -95,7 +98,8 @@ export class UpdateMerchantDto {
   /** Bank details change together or not at all, so a payout never mixes two accounts. */
   /** Paga bank id, as returned by GET /transfers/banks. */
   @IsOptional()
-  @IsUUID()
+  @IsString()
+  @Matches(BANK_ID_PATTERN, { message: BANK_ID_MESSAGE })
   settlementBankCode?: string;
 
   /** The account holder's name is never accepted from the client: the server resolves it. */

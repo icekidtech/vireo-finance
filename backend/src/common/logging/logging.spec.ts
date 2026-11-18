@@ -3,6 +3,17 @@ import { Logger } from '@nestjs/common';
 import { httpLogger } from './http-logger.middleware';
 import { redactForLog, redactUrl } from './redact';
 
+describe('redactForLog (bank ids)', () => {
+  it('keeps bank ids readable but still hides one-time codes', () => {
+    const out = redactForLog({
+      bankCode: 'e73d306e-843a-448b-9b7f-128549ff8945',
+      code: '123456',
+    }) as Record<string, unknown>;
+    expect(out.bankCode).toBe('e73d306e-843a-448b-9b7f-128549ff8945');
+    expect(out.code).toBe('[redacted]');
+  });
+});
+
 describe('redactForLog (identity data)', () => {
   it('never lets BVNs, NINs, selfies, PINs, birth dates or account numbers reach a log', () => {
     const out = redactForLog({

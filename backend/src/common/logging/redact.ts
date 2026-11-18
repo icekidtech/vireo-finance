@@ -9,6 +9,9 @@ const SENSITIVE_KEY =
 const SENSITIVE_EXACT_KEY =
   /^(bvn|nin|national_?id|selfie|pin|currentpin|dateofbirth|date_of_birth|dob|address|accountnumber|account_number|cacnumber|tin)$/i;
 
+/** Contain "code" but are public bank ids, not secrets: kept readable so lookups can be debugged. */
+const SAFE_KEY = /^(bankcode|settlementbankcode|sortcode)$/i;
+
 const MAX_STRING = 200;
 
 /**
@@ -31,7 +34,7 @@ export function redactForLog(value: unknown, depth = 0): unknown {
   const out: Record<string, unknown> = {};
   for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
     out[key] =
-      SENSITIVE_KEY.test(key) || SENSITIVE_EXACT_KEY.test(key)
+      !SAFE_KEY.test(key) && (SENSITIVE_KEY.test(key) || SENSITIVE_EXACT_KEY.test(key))
         ? '[redacted]'
         : redactForLog(v, depth + 1);
   }
