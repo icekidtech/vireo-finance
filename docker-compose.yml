@@ -1,0 +1,113 @@
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3050:3050"
+    environment:
+      NODE_ENV: production
+      PORT: 3050
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: vireo
+      DB_SSL: false
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      PIN_PEPPER: ${PIN_PEPPER}
+      PAGA_API_KEY: ${PAGA_API_KEY}
+      PAGA_API_SECRET: ${PAGA_API_SECRET}
+      PAGA_HASH_KEY: ${PAGA_HASH_KEY}
+      BIOMETRIC_PROVIDER: ${BIOMETRIC_PROVIDER}
+      BIOMETRIC_ENCRYPTION_KEY: ${BIOMETRIC_ENCRYPTION_KEY}
+      DIDIT_API_KEY: ${DIDIT_API_KEY}
+      DIDIT_KEY_TYPE: ${DIDIT_KEY_TYPE:-live}
+      KYC_PROVIDER: ${KYC_PROVIDER}
+      KYC_ENCRYPTION_KEY: ${KYC_ENCRYPTION_KEY}
+      DOCUMENT_STORAGE: ${DOCUMENT_STORAGE}
+      DOCUMENT_ENCRYPTION_KEY: ${DOCUMENT_ENCRYPTION_KEY}
+      B2_KEY_ID: ${B2_KEY_ID}
+      B2_APPLICATION_KEY: ${B2_APPLICATION_KEY}
+      B2_BUCKET_ID: ${B2_BUCKET_ID}
+      B2_BUCKET_NAME: ${B2_BUCKET_NAME}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3050/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 3s
+      start_period: 40s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - vireo-network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: vireo
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - vireo-network
+
+  # Redis Cache/Queue
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - vireo-network
+
+  # Optional: Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - vireo-network
+
+volumes:
+  postgres-data:
+  redis-data:
+
+networks:
+  vireo-network:
+    driver: bridge
