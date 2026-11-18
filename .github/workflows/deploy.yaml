@@ -1,0 +1,121 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yaml"
+  pull_request:
+    paths:
+      - "backend/**"
+  workflow_dispatch:
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  APP_NAME: vireo
+  APP_DIR: /var/www/vireo/backend
+
+jobs:
+  backend:
+    name: Typecheck, test, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+          package_json_file: backend/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: backend/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  deploy:
+    name: Deploy to VPS
+    needs: backend
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+          package_json_file: backend/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: backend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: backend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: backend
+        run: pnpm build
+
+      - name: Write SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync build to VPS
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key"
+          rsync -az --delete -e "$SSH" \
+            backend/dist/ \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ env.APP_DIR }}/dist/
+
+          rsync -az -e "$SSH" \
+            backend/package.json \
+            backend/pnpm-lock.yaml \
+            backend/pnpm-workspace.yaml \
+            backend/ecosystem.config.js \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ env.APP_DIR }}/
+
+      - name: Install production deps, migrate, restart PM2
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            APP_DIR='${{ env.APP_DIR }}' APP_NAME='${{ env.APP_NAME }}' bash -s << 'EOF'
+            set -euo pipefail
+            cd "$APP_DIR"
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+            test -f .env || { echo "Missing $APP_DIR/.env on the server"; exit 1; }
+
+            rm -rf node_modules
+            pnpm install --frozen-lockfile --prod
+
+            # Apply database migrations from the compiled build (reads .env on the server).
+            node node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js
+
+            if pm2 describe "$APP_NAME" > /dev/null 2>&1; then
+              pm2 restart ecosystem.config.js --update-env
+            else
+              pm2 start ecosystem.config.js
+            fi
+            pm2 save
+          EOF

@@ -1,5 +1,7 @@
 export interface CreateVirtualAccountInput {
   userId: string;
+  /** Unique id the account is registered under (defaults to userId; a merchant's id for merchant accounts). */
+  referenceId?: string;
   name: string;
   phone: string;
 }
@@ -102,4 +104,3 @@ export interface RegisterCustomerIdentificationResult {
   referenceNumber: string;
   raw: Record<string, unknown>;
 }
-

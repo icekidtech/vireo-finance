@@ -4,6 +4,11 @@ export enum UserStatus {
   CLOSED = 'closed',
 }
 
+export enum UserRole {
+  USER = 'user',
+  ADMIN = 'admin',
+}
+
 export enum KycStatus {
   PENDING = 'pending',
   VERIFIED = 'verified',
@@ -101,6 +106,7 @@ export enum MerchantOrderStatus {
 }
 
 export enum SettlementStatus {
+  DRAFT = 'draft',
   PENDING = 'pending',
   PROCESSING = 'processing',
   COMPLETED = 'completed',

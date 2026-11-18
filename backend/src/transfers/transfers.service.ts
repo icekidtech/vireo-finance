@@ -1,8 +1,13 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
@@ -29,16 +34,27 @@ import { Hold } from '../ledger/hold.entity';
 import { LedgerService } from '../ledger/ledger.service';
 import { Merchant } from '../merchant/merchant.entity';
 import { MerchantOrder } from '../merchant/merchant-order.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PagaService } from '../paga/paga.service';
 import { RiskService } from '../risk/risk.service';
+import { BalanceCapService } from '../risk/balance-cap.service';
+import { PinService } from '../pin/pin.service';
 import { User } from '../users/user.entity';
-import { CreateTransferDraftDto } from './dto/transfers.dto';
+import { BankLookupDto, CreateTransferDraftDto } from './dto/transfers.dto';
 import { Transfer } from './transfer.entity';
 
 const BANK_TRANSFER_FEE_MINOR = 10000n;
 
+const LOOKUP_WINDOW_MS = 60_000;
+const LOOKUP_LIMIT = 15;
+
 @Injectable()
 export class TransfersService {
+  /** Per-instance sliding window of bank lookups by user. */
+  private readonly lookups = new Map<string, number[]>();
+
+  private readonly logger = new Logger(TransfersService.name);
+
   constructor(
     @InjectRepository(Transfer) private readonly transfers: Repository<Transfer>,
     @InjectRepository(User) private readonly users: Repository<User>,
@@ -49,7 +65,110 @@ export class TransfersService {
     private readonly challenges: ChallengesService,
     private readonly risk: RiskService,
     private readonly paga: PagaService,
+    private readonly notifications: NotificationsService,
+    @Optional() private readonly balanceCaps?: BalanceCapService,
+    @Optional() private readonly pins?: PinService,
   ) {}
+
+  /**
+   * Account numbers we issue (a wallet's or a business's deposit account) all belong to
+   * OUR Paga business, so Paga refuses to pay them ("sender and receiver may not share the
+   * same account"). Money for them moves on our own ledger instead: instant and free.
+   * Returns null for any account that is not ours.
+   */
+  private async resolveOwnAccount(
+    bankCode: string,
+    accountNumber: string,
+    callerId: string,
+  ): Promise<{
+    accountId: string;
+    name: string;
+    recipientUserId: string;
+    scope: 'personal' | 'merchant';
+  } | null> {
+    const own = await this.accounts.findOwnDepositAccount(accountNumber);
+    if (!own) return null;
+    // The number only means "ours" when the chosen bank is our Paga account's bank.
+    const banks = await this.paga.listBanks();
+    const pagaBank = banks.find((b) => b.name.trim().toLowerCase() === 'paga');
+    if (!pagaBank || pagaBank.uuid.toLowerCase() !== bankCode.toLowerCase()) return null;
+
+    const walletOwner = await this.accounts.walletOwner(own.accountId);
+    if (walletOwner) {
+      if (walletOwner === callerId) {
+        throw new BadRequestException(
+          'That is your own wallet account number. You cannot send money to yourself.',
+        );
+      }
+      const owner = await this.users.findOne({ where: { id: walletOwner } });
+      if (!owner) return null;
+      return {
+        accountId: own.accountId,
+        name: owner.name,
+        recipientUserId: owner.id,
+        scope: 'personal',
+      };
+    }
+    const merchant = await this.merchants.findOne({
+      where: { settlementAccountId: own.accountId },
+    });
+    if (!merchant) return null;
+    return {
+      accountId: own.accountId,
+      name: merchant.businessName,
+      recipientUserId: own.userId,
+      scope: 'merchant',
+    };
+  }
+
+  /** Banks Paga can pay out to, for the client's bank picker. */
+  async listBanks() {
+    const banks = await this.paga.listBanks();
+    return banks
+      .map((b) => ({ code: b.uuid, name: b.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * Resolve the account holder's name so the sender can confirm who they are
+   * paying. Rate-limited per user: an open lookup would let anyone enumerate
+   * account holders.
+   */
+  async lookupBankAccount(userId: string, dto: BankLookupDto) {
+    const now = Date.now();
+    const recent = (this.lookups.get(userId) ?? []).filter((t) => now - t < LOOKUP_WINDOW_MS);
+    if (recent.length >= LOOKUP_LIMIT) {
+      throw new HttpException(
+        'Too many account lookups. Try again in a minute.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    recent.push(now);
+    this.lookups.set(userId, recent);
+
+    const own = await this.resolveOwnAccount(dto.bankCode, dto.accountNumber, userId);
+    if (own) {
+      return {
+        accountName: own.name,
+        accountNumber: dto.accountNumber,
+        bankCode: dto.bankCode,
+        internal: true,
+      };
+    }
+    const validated = await this.paga.validateBankAccount({
+      bankCode: dto.bankCode,
+      accountNumber: dto.accountNumber,
+      amountMinor: parseAmountToMinor(dto.amount ?? '1'),
+      reference: `val_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
+    });
+    this.logger.log(`Bank account lookup by user=${userId} bank=${dto.bankCode}`);
+    return {
+      accountName: validated.accountName,
+      accountNumber: validated.accountNumber,
+      bankCode: dto.bankCode,
+      internal: false,
+    };
+  }
 
   async createDraft(
     userId: string,
@@ -87,6 +206,9 @@ export class TransfersService {
     let bankUuid: string | null = null;
     let fee = 0n;
     let order: MerchantOrder | null = null;
+    let effectiveType: TransferType = dto.type;
+    let internalScope: 'personal' | 'merchant' | null = null;
+    let internalRecipientUserId: string | null = null;
 
     if (dto.type === TransferType.INTERNAL) {
       const resolved = await this.resolveInternalRecipient(userId, dto);
@@ -98,18 +220,30 @@ export class TransfersService {
       if (!dto.bankCode || !dto.accountNumber) {
         throw new BadRequestException('bankCode and accountNumber are required for bank transfers');
       }
-      const validated = await this.paga.validateBankAccount({
-        bankCode: dto.bankCode,
-        accountNumber: dto.accountNumber,
-        amountMinor: amount,
-        reference: `val_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
-      });
-      recipientName = validated.accountName;
-      recipientBankCode = validated.bankCode;
-      recipientAccountNumber = validated.accountNumber;
-      bankUuid = validated.bankUuid;
-      recipientKey = `bank:${validated.bankUuid}:${validated.accountNumber}`;
-      fee = BANK_TRANSFER_FEE_MINOR;
+      const own = await this.resolveOwnAccount(dto.bankCode, dto.accountNumber, userId);
+      if (own) {
+        // One of our own accounts: settle on the ledger, not through Paga.
+        effectiveType = TransferType.INTERNAL;
+        destinationAccountId = own.accountId;
+        recipientName = own.name;
+        recipientAccountNumber = dto.accountNumber;
+        recipientKey = `internal:${own.accountId}`;
+        internalScope = own.scope;
+        internalRecipientUserId = own.recipientUserId;
+      } else {
+        const validated = await this.paga.validateBankAccount({
+          bankCode: dto.bankCode,
+          accountNumber: dto.accountNumber,
+          amountMinor: amount,
+          reference: `val_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
+        });
+        recipientName = validated.accountName;
+        recipientBankCode = validated.bankCode;
+        recipientAccountNumber = validated.accountNumber;
+        bankUuid = validated.bankUuid;
+        recipientKey = `bank:${validated.bankUuid}:${validated.accountNumber}`;
+        fee = BANK_TRANSFER_FEE_MINOR;
+      }
     } else if (dto.type === TransferType.MERCHANT) {
       if (!dto.orderReference) {
         throw new BadRequestException('orderReference is required for merchant payments');
@@ -153,7 +287,7 @@ export class TransfersService {
     const transfer = await this.transfers.save(
       this.transfers.create({
         idempotencyKey: dto.idempotencyKey,
-        type: dto.type,
+        type: effectiveType,
         status: TransferStatus.DRAFT,
         sourceAccountId: source.id,
         destinationAccountId,
@@ -169,6 +303,7 @@ export class TransfersService {
           recipientKey,
           channel,
           ...(bankUuid ? { bankUuid } : {}),
+          ...(internalScope ? { internalScope, internalRecipientUserId } : {}),
           ...(order ? { orderReference: order.reference } : {}),
         },
       }),
@@ -178,7 +313,7 @@ export class TransfersService {
       userId,
       deviceId: dto.deviceId,
       type:
-        dto.type === TransferType.MERCHANT
+        effectiveType === TransferType.MERCHANT
           ? ChallengeType.MERCHANT_PAYMENT
           : ChallengeType.TRANSFER,
       payload: this.buildChallengePayload(transfer),
@@ -190,7 +325,12 @@ export class TransfersService {
     return { transfer: presentTransfer(transfer), challenge: presentChallenge(challenge) };
   }
 
-  async submit(userId: string, transferId: string, signature: string) {
+  async submit(
+    userId: string,
+    transferId: string,
+    signature: string,
+    confirmation: { approval: 'biometric' | 'pin'; pin?: string } = { approval: 'biometric' },
+  ) {
     const preview = await this.transfers.findOne({
       where: { id: transferId, initiatedByUserId: userId },
     });
@@ -202,6 +342,13 @@ export class TransfersService {
     }
     if (preview.status !== TransferStatus.DRAFT) {
       throw new BadRequestException(`Transfer is already ${preview.status}`);
+    }
+
+    // Confirmation by PIN is checked before anything is spent or any challenge is consumed,
+    // so a wrong PIN never uses up the payment's one-time signature.
+    if (confirmation.approval === 'pin') {
+      if (!this.pins) throw new BadRequestException('PIN confirmation is not available');
+      await this.pins.verify(userId, confirmation.pin ?? '');
     }
 
     if (preview.type === TransferType.INTERNAL) {
@@ -266,11 +413,51 @@ export class TransfersService {
       return manager.getRepository(Transfer).save(locked);
     });
 
+    // The recipient's balance may now exceed their tier cap; the sender's may have dropped below it.
+    await this.reconcileCaps([
+      transfer.destinationAccountId
+        ? await this.accounts.walletOwner(transfer.destinationAccountId)
+        : null,
+      transfer.initiatedByUserId,
+    ]);
+    await this.notifyInternalRecipient(transfer);
     return { transfer: presentTransfer(transfer) };
   }
 
+  /** Tells the person (or business) who just received money which side of their login it landed on. */
+  private async notifyInternalRecipient(transfer: Transfer): Promise<void> {
+    try {
+      const meta = (transfer.metadata ?? {}) as {
+        internalScope?: string;
+        internalRecipientUserId?: string;
+      };
+      let recipientId = meta.internalRecipientUserId ?? null;
+      let scope: 'personal' | 'merchant' =
+        meta.internalScope === 'merchant' ? 'merchant' : 'personal';
+      if (!recipientId && transfer.destinationAccountId) {
+        recipientId = await this.accounts.walletOwner(transfer.destinationAccountId);
+        scope = 'personal';
+      }
+      if (!recipientId) return;
+      await this.notifications.creditReceived(recipientId, BigInt(transfer.amount), { scope });
+    } catch (error) {
+      this.logger.warn(
+        `Recipient notification failed for transfer=${transfer.id}: ${String(error)}`,
+      );
+    }
+  }
+
+  private async reconcileCaps(userIds: (string | null | undefined)[]): Promise<void> {
+    if (!this.balanceCaps) return;
+    for (const id of new Set(userIds.filter((v): v is string => !!v))) {
+      await this.balanceCaps
+        .reconcile(id)
+        .catch((e) => this.logger.warn(`Balance cap reconcile failed for ${id}: ${String(e)}`));
+    }
+  }
+
   private async executeMerchant(userId: string, transferId: string, signature: string) {
-    const transfer = await this.ledger.runInTransaction(async (manager) => {
+    const { transfer, merchantId } = await this.ledger.runInTransaction(async (manager) => {
       const locked = await this.lockDraft(manager, userId, transferId);
       const orderReference = locked.metadata?.orderReference as string | undefined;
       if (!orderReference) {
@@ -317,10 +504,134 @@ export class TransfersService {
       await manager.getRepository(MerchantOrder).save(order);
 
       locked.status = TransferStatus.COMPLETED;
-      return manager.getRepository(Transfer).save(locked);
+      const saved = await manager.getRepository(Transfer).save(locked);
+      return { transfer: saved, merchantId: order.merchantId };
     });
 
+    // Best-effort after commit: a notification failure must never fail a payment.
+    await this.notifyMerchantPaid(merchantId, transfer);
     return { transfer: presentTransfer(transfer) };
+  }
+
+  /**
+   * Settles an open merchant order from a customer's wallet after the customer
+   * was verified biometrically at the till. There is no device signature on
+   * this path, so the caller (TerminalPaymentService) is the only authorization
+   * and must have verified the customer. The order is locked for the whole
+   * operation, so a QR payment and a terminal payment cannot both succeed.
+   */
+  async payOrderWithBiometric(input: {
+    customerUserId: string;
+    merchantId: string;
+    orderReference: string;
+    biometricTypes: string[];
+  }) {
+    const { customerUserId, merchantId, orderReference } = input;
+    const customer = await this.getUser(customerUserId);
+    const source = await this.accounts.getWallet(customerUserId);
+    const merchantAccount = await this.accounts.getMerchantAccount(merchantId);
+    const merchant = await this.merchants.findOne({ where: { id: merchantId } });
+    if (!merchant) {
+      throw new NotFoundException('Merchant not found');
+    }
+
+    const { transfer } = await this.ledger.runInTransaction(async (manager) => {
+      const order = await manager.getRepository(MerchantOrder).findOne({
+        where: { reference: orderReference, merchantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!order) {
+        throw new NotFoundException('Merchant order not found');
+      }
+      if (order.status !== MerchantOrderStatus.OPEN) {
+        throw new BadRequestException(`Merchant order is ${order.status}`);
+      }
+      if (order.expiresAt && order.expiresAt.getTime() < Date.now()) {
+        order.status = MerchantOrderStatus.EXPIRED;
+        await manager.getRepository(MerchantOrder).save(order);
+        throw new BadRequestException('Merchant order has expired');
+      }
+
+      const amount = BigInt(order.amount);
+      const recipientKey = `merchant:${merchantId}`;
+      await this.risk.preCheck({
+        userId: customer.id,
+        kycTier: customer.kycTier,
+        amount,
+        fee: 0n,
+        recipientKey,
+        channel: 'user',
+      });
+
+      const saved = await manager.getRepository(Transfer).save(
+        manager.getRepository(Transfer).create({
+          idempotencyKey: `terminal:${order.id}`,
+          type: TransferType.MERCHANT,
+          status: TransferStatus.COMPLETED,
+          sourceAccountId: source.id,
+          destinationAccountId: merchantAccount.id,
+          initiatedByUserId: customer.id,
+          recipientName: merchant.businessName,
+          amount: order.amount,
+          fee: '0',
+          currency: DEFAULT_CURRENCY,
+          metadata: {
+            recipientKey,
+            channel: 'biometric',
+            orderReference: order.reference,
+            biometricTypes: input.biometricTypes,
+          },
+        }),
+      );
+
+      await this.ledger.post(manager, {
+        idempotencyKey: `transfer:${saved.id}`,
+        type: LedgerTransactionType.MERCHANT_PAYMENT,
+        reference: saved.id,
+        currency: saved.currency,
+        metadata: { transferId: saved.id, orderReference: order.reference, channel: 'biometric' },
+        legs: [
+          { accountId: source.id, direction: LedgerDirection.DEBIT, amount },
+          { accountId: merchantAccount.id, direction: LedgerDirection.CREDIT, amount },
+        ],
+      });
+
+      order.status = MerchantOrderStatus.PAID;
+      order.paidByUserId = customer.id;
+      order.transferId = saved.id;
+      await manager.getRepository(MerchantOrder).save(order);
+      return { transfer: saved };
+    });
+
+    await this.notifyMerchantPaid(merchantId, transfer);
+    return { transfer: presentTransfer(transfer) };
+  }
+
+  private async notifyMerchantPaid(merchantId: string, transfer: Transfer): Promise<void> {
+    try {
+      const merchant = await this.merchants.findOne({ where: { id: merchantId } });
+      if (!merchant?.ownerUserId) {
+        return;
+      }
+      const orderReference = transfer.metadata?.orderReference as string | undefined;
+      await this.notifications.send(
+        merchant.ownerUserId,
+        'Payment received',
+        `You received NGN ${formatMinor(BigInt(transfer.amount))}${
+          orderReference ? ` for order ${orderReference}` : ''
+        }.`,
+        [
+          { type: 'sms', enabled: true },
+          { type: 'push', enabled: true },
+          { type: 'in_app', enabled: true },
+        ],
+        { kind: 'merchant_payment', scope: 'merchant', transferId: transfer.id, orderReference },
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Merchant payment notification failed for transfer=${transfer.id}: ${String(error)}`,
+      );
+    }
   }
 
   private async executeBank(userId: string, transferId: string, signature: string) {
@@ -374,6 +685,15 @@ export class TransfersService {
         narration: 'Vireo transfer',
       });
     } catch (error) {
+      if (error instanceof BadGatewayException) {
+        // Ambiguous outcome: Paga may have accepted the payout before the
+        // connection failed. Keep the transfer PENDING (funds held) and let
+        // reconciliation or the callback resolve it.
+        this.logger.warn(
+          `Paga payout outcome unknown for transfer=${pending.id}: ${String(error)}`,
+        );
+        return null;
+      }
       await this.failBankTransfer(pending.id, 'Paga payout request failed');
       throw error;
     }

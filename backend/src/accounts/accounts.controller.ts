@@ -1,9 +1,10 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { formatMinor } from '../database/money';
 import { LedgerService } from '../ledger/ledger.service';
 import { AccountsService } from './accounts.service';
+import { UserDepositService } from './user-deposit.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller('accounts')
@@ -11,19 +12,29 @@ export class AccountsController {
   constructor(
     private readonly accounts: AccountsService,
     private readonly ledger: LedgerService,
+    private readonly deposits: UserDepositService,
   ) {}
+
+  /** The account number to pay into, created now if signup could not create it. */
+  @Post('me/deposit-account')
+  @HttpCode(200)
+  depositAccount(@CurrentUser() user: AuthenticatedUser) {
+    return this.deposits.getOrCreate(user.userId);
+  }
 
   @Get('me')
   async me(@CurrentUser() user: AuthenticatedUser) {
     const wallet = await this.accounts.getWallet(user.userId);
     const balance = await this.ledger.getBalance(wallet.id);
-    const virtualAccount = await this.accounts.getVirtualAccount(user.userId);
+    const virtualAccount = await this.accounts.getVirtualAccountForAccount(wallet.id);
     return {
       accountId: wallet.id,
       currency: wallet.currency,
       balance: formatMinor(balance.balance),
       held: formatMinor(balance.held),
       available: formatMinor(balance.available),
+      /** Part of the balance held back until more identity verification is done. */
+      restricted: formatMinor(await this.accounts.restrictedFor(wallet.id)),
       virtualAccount: virtualAccount
         ? {
             accountNumber: virtualAccount.accountNumber,

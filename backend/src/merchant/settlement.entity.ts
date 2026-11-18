@@ -20,8 +20,11 @@ export class Settlement {
   @Column({ type: 'bigint' })
   amount: string;
 
-  @Column({ type: 'enum', enum: SettlementStatus, default: SettlementStatus.PENDING })
+  @Column({ type: 'enum', enum: SettlementStatus, default: SettlementStatus.DRAFT })
   status: SettlementStatus;
+
+  @Column({ type: 'uuid', nullable: true })
+  challengeId: string | null;
 
   @Column({ type: 'varchar', length: 120, nullable: true })
   pagaReference: string | null;

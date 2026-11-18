@@ -1,0 +1,52 @@
+services:
+  - type: web
+    name: vireo-backend
+    env: node
+    region: oregon
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3050
+      - key: DATABASE_URL
+        fromDatabase:
+          name: vireo-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: vireo-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PIN_PEPPER
+        generateValue: true
+      - key: PAGA_API_KEY
+        sync: false
+      - key: PAGA_API_SECRET
+        sync: false
+      - key: PAGA_HASH_KEY
+        sync: false
+      - key: BIOMETRIC_ENCRYPTION_KEY
+        sync: false
+      - key: DIDIT_API_KEY
+        sync: false
+      - key: KYC_ENCRYPTION_KEY
+        sync: false
+      - key: DOCUMENT_ENCRYPTION_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+
+databases:
+  - name: vireo-db
+    databaseName: vireo
+    user: vireo_user
+    plan: starter
+
+  - name: vireo-redis
+    plan: starter

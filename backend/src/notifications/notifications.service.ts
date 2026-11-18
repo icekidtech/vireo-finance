@@ -1,131 +1,93 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Resend } from 'resend';
-import { User } from '../users/user.entity';
-import { formatMinor } from '../database/money';
+import { LoggerNotificationProvider } from './providers/logger.provider';
+import { SmsNotificationProvider } from './providers/sms.provider';
+import { PushNotificationProvider } from './providers/push.provider';
+import { InAppNotificationProvider } from './providers/in-app.provider';
+import { NotificationProvider, NotificationChannel } from './notification-provider.interface';
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private readonly resend: Resend | null;
-  private readonly fromEmail: string;
+  private readonly providers: NotificationProvider[];
 
   constructor(
-    private readonly config: ConfigService,
-    @InjectRepository(User) private readonly users: Repository<User>,
+    loggerProvider: LoggerNotificationProvider,
+    smsProvider: SmsNotificationProvider,
+    pushProvider: PushNotificationProvider,
+    inAppProvider?: InAppNotificationProvider,
   ) {
-    const apiKey = this.config.get<string>('resend.apiKey') ?? '';
-    this.fromEmail = this.config.get<string>('resend.fromEmail') ?? 'noreply@vireofinance.com';
-    this.resend = apiKey ? new Resend(apiKey) : null;
-    if (!apiKey) {
-      this.logger.warn('RESEND_API_KEY not set — emails will only be logged');
+    this.providers = [loggerProvider];
+    if (inAppProvider) {
+      this.providers.push(inAppProvider);
+    }
+    if (smsProvider.constructor.name === 'SmsNotificationProvider') {
+      this.providers.push(smsProvider);
+    }
+    if (pushProvider.constructor.name === 'PushNotificationProvider') {
+      this.providers.push(pushProvider);
     }
   }
 
-  async sendWelcome(user: User): Promise<void> {
-    if (!user.email) return;
-    await this.sendEmail({
-      to: user.email,
-      subject: 'Welcome to Vireo Finance!',
-      html: [
-        `<h1>Welcome, ${escapeHtml(user.name)}!</h1>`,
-        `<p>Your Vireo Finance account is ready. Start sending and receiving money instantly.</p>`,
-        `<p>Your Vireo handle: <strong>${escapeHtml(user.handle ?? user.id)}</strong></p>`,
-      ].join('\n'),
-    });
-  }
+  async send(
+    userId: string,
+    title: string,
+    body: string,
+    channels: NotificationChannel[] = [{ type: 'in_app', enabled: true }],
+    data?: Record<string, unknown>,
+  ): Promise<void> {
+    const results = await Promise.allSettled(
+      this.providers.map((provider) => {
+        const channel = channels.find((c) => c.type === provider.name);
+        if (channel && !channel.enabled) {
+          return Promise.resolve();
+        }
+        return provider.send(userId, title, body, data);
+      }),
+    );
 
-  async sendKycUpdate(user: User, status: string, tier: number): Promise<void> {
-    if (!user.email) return;
-    const statusText =
-      status === 'verified' ? 'Approved' : status === 'rejected' ? 'Rejected' : 'Under Review';
-    const lines = [
-      `<h2>KYC Update for ${escapeHtml(user.name)}</h2>`,
-      `<p>Your identity verification status: <strong>${statusText}</strong></p>`,
-    ];
-    if (status === 'verified') {
-      lines.push(`<p>You are now KYC Tier ${tier}. Your daily limits have been updated.</p>`);
-    }
-    if (status === 'rejected') {
-      lines.push(`<p>Your document was not accepted. Please resubmit with a valid ID.</p>`);
-    }
-    await this.sendEmail({
-      to: user.email,
-      subject: `KYC ${statusText} — Vireo Finance`,
-      html: lines.join('\n'),
-    });
-  }
-
-  async creditReceived(userId: string, amountMinor: bigint): Promise<void> {
-    const user = await this.users.findOne({ where: { id: userId } });
-    if (!user?.email) {
-      this.logger.debug(`No email for user ${userId}, skipping credit notification`);
-      return;
-    }
-    const formatted = formatMinor(amountMinor);
-    await this.sendEmail({
-      to: user.email,
-      subject: `You received NGN ${formatted} — Vireo Finance`,
-      html: [
-        `<h2>Credit Received</h2>`,
-        `<p>Hi ${escapeHtml(user.name)},</p>`,
-        `<p>You have received <strong>NGN ${formatted}</strong> in your Vireo Finance wallet.</p>`,
-      ].join('\n'),
-    });
-  }
-
-  async send(userId: string, title: string, body: string): Promise<void> {
-    const user = await this.users.findOne({ where: { id: userId } });
-    if (!user?.email) {
-      this.logger.log(`notify user=${userId} title="${title}" body="${body}" (no email on file)`);
-      return;
-    }
-    await this.sendEmail({
-      to: user.email,
-      subject: `${title} — Vireo Finance`,
-      html: `<h2>${escapeHtml(title)}</h2><p>${escapeHtml(body)}</p>`,
-    });
-  }
-
-  private async sendEmail({
-    to,
-    subject,
-    html,
-  }: {
-    to: string;
-    subject: string;
-    html: string;
-  }): Promise<void> {
-    if (!to) {
-      this.logger.warn(`sendEmail called with empty recipient, subject="${subject}"`);
-      return;
-    }
-    if (!this.resend) {
-      this.logger.log(`[EMAIL-MOCK] to=${to} subject="${subject}"`);
-      return;
-    }
-    try {
-      const { error } = await this.resend.emails.send({
-        from: this.fromEmail,
-        to,
-        subject,
-        html,
-      });
-      if (error) {
-        this.logger.error(`Resend error: ${JSON.stringify(error)}`);
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        this.logger.error(
+          `Notification provider ${this.providers[index].name} failed for user=${userId}: ${String(result.reason)}`,
+        );
       }
-    } catch (err) {
-      this.logger.error(`Failed to send email to ${to}: ${String(err)}`);
-    }
+    });
   }
-}
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  async creditReceived(
+    userId: string,
+    amountMinor: bigint,
+    data?: Record<string, unknown>,
+  ): Promise<void> {
+    await this.send(
+      userId,
+      'Credit received',
+      `You received NGN ${this.formatMinor(amountMinor)}.`,
+      [
+        { type: 'sms', enabled: true },
+        { type: 'push', enabled: true },
+        { type: 'in_app', enabled: true },
+      ],
+      data,
+    );
+  }
+
+  /** First notification a new user sees in the app inbox. */
+  async sendWelcome(user: { id: string; name: string }): Promise<void> {
+    await this.send(
+      user.id,
+      'Welcome to Vireo',
+      `Hi ${user.name.trim().split(/\s+/)[0]}, your account is ready. Share your account number to receive money.`,
+      [{ type: 'in_app', enabled: true }],
+      { scope: 'personal' },
+    );
+  }
+
+  private formatMinor(minor: bigint): string {
+    const sign = minor < 0n ? '-' : '';
+    const absolute = minor < 0n ? -minor : minor;
+    const whole = absolute / 100n;
+    const fraction = (absolute % 100n).toString().padStart(2, '0');
+    return `${sign}${whole}.${fraction}`;
+  }
 }

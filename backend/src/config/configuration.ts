@@ -16,9 +16,14 @@ export interface AppConfig {
   };
   otp: {
     ttlSeconds: number;
+    /** Write each OTP to the server log until SMS delivery exists. Never enable in production. */
+    logCode: boolean;
   };
   challenge: {
     ttlSeconds: number;
+  };
+  admin: {
+    phones: string[];
   };
   redis: {
     host: string;
@@ -32,23 +37,71 @@ export interface AppConfig {
     hashKey: string;
     webhookSecret: string;
   };
+  merchantLimits: {
+    /** Daily cash-out cap per business verification level (minor units). */
+    cashoutDailyLimits: Record<number, bigint>;
+  };
   risk: {
     tierDailyLimits: Record<number, bigint>;
+    /** Wallet balance cap per KYC tier (minor units); 0 means no cap. */
+    tierMaxBalance: Record<number, bigint>;
     singleTransferLimit: bigint;
     newPayeeLimit: bigint;
     velocityCount: number;
     velocityWindowMinutes: number;
   };
-  resend: {
-    apiKey: string;
-    fromEmail: string;
-  };
   openai: {
     apiKey: string;
     model: string;
   };
-  googlePlay: {
-    integrityApiKey: string;
+  logging: {
+    /** Log redacted HTTP request bodies. Development only. */
+    httpBodies: boolean;
+    /** Log full OpenAI request/response payloads. Development only. */
+    llmPayloads: boolean;
+  };
+  biometrics: {
+    /** Name of the configured biometric vendor adapter; empty means biometrics are disabled. */
+    provider: string;
+    /** Base64 AES-256 key that encrypts stored biometric templates. */
+    encryptionKey: string;
+    didit: { apiKey: string; baseUrl: string; keyType: string; timeoutMs: number };
+  };
+  storage: {
+    /** Document storage backend; empty disables document uploads. */
+    provider: string;
+    /** Base64 AES-256 key encrypting stored documents. */
+    documentEncryptionKey: string;
+    b2: {
+      keyId: string;
+      applicationKey: string;
+      bucketId: string;
+      bucketName: string;
+      timeoutMs: number;
+    };
+  };
+  pin: {
+    /** Server secret keying the PIN hashes (never stored in the database). */
+    pepper: string;
+  };
+  kyc: {
+    /** Name of the BVN verification vendor; empty disables automatic BVN checks. */
+    provider: string;
+    /** Base64 AES-256 key that encrypts stored BVNs (also keys the BVN uniqueness hash). */
+    encryptionKey: string;
+    /** Minimum 0-100 face similarity for selfie-to-ID matching. */
+    minFaceMatch: number;
+  };
+  notifications: {
+    sms?: {
+      enabled?: boolean;
+      gatewayUrl?: string;
+      apiKey?: string;
+      senderId?: string;
+    };
+    push?: {
+      enabled?: boolean;
+    };
   };
 }
 
@@ -75,14 +128,21 @@ export default (): AppConfig => ({
     ssl: bool(process.env.DB_SSL, false),
   },
   jwt: {
-    secret: process.env.JWT_SECRET ?? 'dev-only-change-me',
+    secret: process.env.JWT_SECRET ?? '',
     expiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
   },
   otp: {
     ttlSeconds: int(process.env.OTP_TTL_SECONDS, 300),
+    logCode: bool(process.env.OTP_LOG_CODE, false),
   },
   challenge: {
     ttlSeconds: int(process.env.CHALLENGE_TTL_SECONDS, 120),
+  },
+  admin: {
+    phones: (process.env.ADMIN_PHONES ?? '')
+      .split(',')
+      .map((phone) => phone.trim())
+      .filter((phone) => phone.length > 0),
   },
   redis: {
     host: process.env.REDIS_HOST ?? 'localhost',
@@ -96,26 +156,79 @@ export default (): AppConfig => ({
     hashKey: process.env.PAGA_HASH_KEY ?? '',
     webhookSecret: process.env.PAGA_WEBHOOK_SECRET ?? '',
   },
+  merchantLimits: {
+    cashoutDailyLimits: {
+      1: BigInt(process.env.MERCHANT_LEVEL1_CASHOUT_DAILY_LIMIT ?? '20000000'),
+      2: BigInt(process.env.MERCHANT_LEVEL2_CASHOUT_DAILY_LIMIT ?? '500000000'),
+    },
+  },
   risk: {
     tierDailyLimits: {
       0: BigInt(process.env.RISK_TIER0_DAILY_LIMIT ?? '2000000'),
       1: BigInt(process.env.RISK_TIER1_DAILY_LIMIT ?? '5000000'),
       2: BigInt(process.env.RISK_TIER2_DAILY_LIMIT ?? '20000000'),
+      3: BigInt(process.env.RISK_TIER3_DAILY_LIMIT ?? '500000000'),
+    },
+    tierMaxBalance: {
+      0: BigInt(process.env.RISK_TIER0_MAX_BALANCE ?? '5000000'),
+      1: BigInt(process.env.RISK_TIER1_MAX_BALANCE ?? '30000000'),
+      2: BigInt(process.env.RISK_TIER2_MAX_BALANCE ?? '50000000'),
+      3: BigInt(process.env.RISK_TIER3_MAX_BALANCE ?? '0'),
     },
     singleTransferLimit: BigInt(process.env.RISK_SINGLE_TRANSFER_LIMIT ?? '10000000'),
     newPayeeLimit: BigInt(process.env.RISK_NEW_PAYEE_LIMIT ?? '5000000'),
     velocityCount: int(process.env.RISK_VELOCITY_COUNT, 10),
     velocityWindowMinutes: int(process.env.RISK_VELOCITY_WINDOW_MINUTES, 10),
   },
-  resend: {
-    apiKey: process.env.RESEND_API_KEY ?? '',
-    fromEmail: process.env.RESEND_FROM_EMAIL ?? 'noreply@vireofinance.com',
+  logging: {
+    httpBodies: bool(process.env.LOG_HTTP_BODIES, false),
+    llmPayloads: bool(process.env.LOG_LLM_PAYLOADS, false),
+  },
+  storage: {
+    provider: (process.env.DOCUMENT_STORAGE ?? '').trim().toLowerCase(),
+    documentEncryptionKey: process.env.DOCUMENT_ENCRYPTION_KEY ?? '',
+    b2: {
+      keyId: process.env.B2_KEY_ID ?? '',
+      applicationKey: process.env.B2_APPLICATION_KEY ?? '',
+      bucketId: process.env.B2_BUCKET_ID ?? '',
+      bucketName: process.env.B2_BUCKET_NAME ?? '',
+      timeoutMs: parseInt(process.env.B2_TIMEOUT_MS ?? '20000', 10),
+    },
+  },
+  pin: {
+    pepper: process.env.PIN_PEPPER ?? '',
+  },
+  kyc: {
+    provider: (process.env.KYC_PROVIDER ?? '').trim().toLowerCase(),
+    encryptionKey: process.env.KYC_ENCRYPTION_KEY ?? '',
+    minFaceMatch: parseInt(process.env.BIOMETRIC_MIN_MATCH_SCORE ?? '75', 10),
+  },
+  biometrics: {
+    provider: (process.env.BIOMETRIC_PROVIDER ?? '').trim().toLowerCase(),
+    encryptionKey: process.env.BIOMETRIC_ENCRYPTION_KEY ?? '',
+    didit: {
+      apiKey: process.env.DIDIT_API_KEY ?? '',
+      baseUrl: (process.env.DIDIT_BASE_URL ?? 'https://verification.didit.me/v3').replace(
+        /\/+$/,
+        '',
+      ),
+      keyType: (process.env.DIDIT_KEY_TYPE ?? '').trim().toLowerCase(),
+      timeoutMs: parseInt(process.env.DIDIT_TIMEOUT_MS ?? '15000', 10),
+    },
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY ?? '',
-    model: process.env.OPENAI_MODEL ?? 'gpt-4o',
+    model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
   },
-  googlePlay: {
-    integrityApiKey: process.env.GOOGLE_PLAY_INTEGRITY_API_KEY ?? '',
+  notifications: {
+    sms: {
+      enabled: bool(process.env.NOTIFICATIONS_SMS_ENABLED, false),
+      gatewayUrl: process.env.NOTIFICATIONS_SMS_GATEWAY_URL ?? undefined,
+      apiKey: process.env.NOTIFICATIONS_SMS_API_KEY ?? undefined,
+      senderId: process.env.NOTIFICATIONS_SMS_SENDER_ID ?? undefined,
+    },
+    push: {
+      enabled: bool(process.env.NOTIFICATIONS_PUSH_ENABLED, false),
+    },
   },
 });

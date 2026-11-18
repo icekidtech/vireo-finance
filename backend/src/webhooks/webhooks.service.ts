@@ -1,15 +1,17 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
+import { AccountsService } from '../accounts/accounts.service';
+import { BalanceCapService } from '../risk/balance-cap.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { VirtualAccount } from '../accounts/virtual-account.entity';
 import { SYSTEM_PAGA_POOL_ACCOUNT_ID } from '../common/constants';
 import { LedgerDirection, LedgerTransactionType, PagaEventStatus } from '../common/enums';
 import { sha256Hex } from '../common/crypto';
-import { parseAmountToMinor } from '../database/money';
+import { formatMinor, parseAmountToMinor } from '../database/money';
 import { LedgerService } from '../ledger/ledger.service';
 import { MerchantService } from '../merchant/merchant.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { IncomingHeaders, PagaService } from '../paga/paga.service';
+import { IncomingHeaders, PagaService, statusFromText } from '../paga/paga.service';
 import { TransfersService } from '../transfers/transfers.service';
 import { PagaEvent } from './paga-event.entity';
 
@@ -25,6 +27,8 @@ export class WebhooksService {
     private readonly notifications: NotificationsService,
     private readonly transfers: TransfersService,
     private readonly merchants: MerchantService,
+    @Optional() private readonly caps?: BalanceCapService,
+    @Optional() private readonly accounts?: AccountsService,
   ) {}
 
   async handle(headers: IncomingHeaders, rawBody: string, body: Record<string, unknown>) {
@@ -125,17 +129,57 @@ export class WebhooksService {
       });
     });
 
-    await this.notifications.creditReceived(virtualAccount.userId, amount);
+    // The same login can own a personal wallet and a business: say which one this money is for.
+    const scope = (await this.accounts?.walletOwner(virtualAccount.accountId))
+      ? 'personal'
+      : 'merchant';
+    await this.notifications.creditReceived(virtualAccount.userId, amount, { scope });
+    // Balance caps apply to the personal wallet only.
+    if (scope === 'personal') await this.applyBalanceCap(virtualAccount.userId);
     return { credited: true };
+  }
+
+  /** Money above the tier's balance cap is accepted but restricted; tell the user why. */
+  private async applyBalanceCap(userId: string): Promise<void> {
+    if (!this.caps) return;
+    try {
+      const restricted = await this.caps.reconcile(userId);
+      if (restricted > 0n) {
+        await this.notifications.send(
+          userId,
+          'Part of your balance is restricted',
+          `NGN ${formatMinor(restricted)} is held until you verify more of your identity. Open Verify identity to raise your limit.`,
+          undefined,
+          { scope: 'personal' },
+        );
+      }
+    } catch (error) {
+      // The credit already posted; a failed restriction is logged and retried on the next credit.
+      this.logger.error(`Balance cap check failed for ${userId}: ${String(error)}`);
+    }
   }
 
   private async processPayoutUpdate(
     body: Record<string, unknown>,
   ): Promise<{ payoutUpdated?: boolean; ignored?: boolean }> {
     const reference = String(body.referenceNumber ?? '');
-    const success = String(body.responseCode ?? '0') === '0';
     const providerReference = String(body.transactionId ?? reference);
     const reason = String(body.message ?? 'Paga reported failure');
+
+    // Only act on an explicit outcome. A missing status must never default to
+    // success, and a still-pending payout is left for reconciliation.
+    let success: boolean;
+    if (body.transactionStatus !== undefined) {
+      const status = statusFromText(body.transactionStatus);
+      if (status === 'pending') {
+        return { ignored: true };
+      }
+      success = status === 'completed';
+    } else if (body.responseCode !== undefined) {
+      success = String(body.responseCode) === '0';
+    } else {
+      return { ignored: true };
+    }
 
     const handled =
       (await this.transfers.handlePayoutCallback(reference, success, providerReference, reason)) ||

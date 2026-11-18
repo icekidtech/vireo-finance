@@ -39,7 +39,7 @@ export class Transfer {
   @Column({ type: 'varchar', length: 32, nullable: true })
   recipientPhone: string | null;
 
-  @Column({ type: 'varchar', length: 16, nullable: true })
+  @Column({ type: 'varchar', length: 40, nullable: true })
   recipientBankCode: string | null;
 
   @Column({ type: 'varchar', length: 32, nullable: true })

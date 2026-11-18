@@ -23,6 +23,8 @@ export type IncomingHeaders = Record<string, string | string[] | undefined>;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BANK_CACHE_MS = 24 * 60 * 60 * 1000;
+/** After a failed fetch, don't hit Paga again for this long (avoids 429 storms). */
+const BANK_FAILURE_COOLDOWN_MS = 30 * 1000;
 
 class PagaApiError extends Error {
   constructor(
@@ -38,12 +40,15 @@ class PagaApiError extends Error {
 export class PagaService {
   private readonly logger = new Logger(PagaService.name);
   private bankCache: { fetchedAt: number; banks: PagaBank[] } | null = null;
+  private bankInflight: Promise<PagaBank[]> | null = null;
+  private bankFailure: { at: number; error: unknown } | null = null;
 
   constructor(private readonly config: ConfigService) {}
 
   async createVirtualAccount(input: CreateVirtualAccountInput): Promise<VirtualAccountResult> {
-    const referenceNumber = `va_${input.userId}`;
-    const accountReference = toAccountReference(input.userId);
+    const referenceId = input.referenceId ?? input.userId;
+    const referenceNumber = `va_${referenceId}`;
+    const accountReference = toAccountReference(referenceId);
     const { firstName, lastName } = splitName(input.name);
     const callbackUrl = this.callbackUrl();
 
@@ -65,6 +70,8 @@ export class PagaService {
     if (!accountNumber) {
       throw new BadGatewayException('Paga did not return a persistent account number');
     }
+
+    this.logger.log(`Virtual account created for ${referenceNumber}`);
 
     return {
       accountNumber,
@@ -105,6 +112,12 @@ export class PagaService {
       };
     } catch (error) {
       if (error instanceof PagaApiError) {
+        // 139 is OUR Paga wallet being short of funds (Paga prices the lookup against it):
+        // not the user's mistake, and not something to show them. Surfaces as a generic 502.
+        if (String(error.raw.responseCode) === '139') {
+          this.logger.error('Paga business wallet has insufficient balance for the account lookup');
+          throw new BadGatewayException('Paga business wallet is out of funds');
+        }
         throw new BadRequestException(error.message);
       }
       throw error;
@@ -274,13 +287,7 @@ export class PagaService {
           customerIdExpirationDate: expiry || undefined,
           ...(input.customerIdPhoto ? { customerIdPhoto: input.customerIdPhoto } : {}),
         },
-        [
-          input.referenceNumber,
-          input.customerPhoneNumber,
-          input.customerIdType,
-          idNumber,
-          expiry,
-        ],
+        [input.referenceNumber, input.customerPhoneNumber, input.customerIdType, idNumber, expiry],
       );
 
       return {
@@ -408,13 +415,36 @@ export class PagaService {
     return candidates.some((candidate) => safeEqual(candidate, bodyHash));
   }
 
-  private async listBanks(): Promise<PagaBank[]> {
+  async listBanks(): Promise<PagaBank[]> {
     if (this.bankCache && Date.now() - this.bankCache.fetchedAt < BANK_CACHE_MS) {
       return this.bankCache.banks;
     }
+    // Replay a recent failure instead of calling Paga again.
+    if (this.bankFailure && Date.now() - this.bankFailure.at < BANK_FAILURE_COOLDOWN_MS) {
+      throw this.bankFailure.error;
+    }
+    // Concurrent callers share one upstream request.
+    if (!this.bankInflight) {
+      this.bankInflight = this.fetchBanks()
+        .then((banks) => {
+          this.bankFailure = null;
+          return banks;
+        })
+        .catch((error) => {
+          this.bankFailure = { at: Date.now(), error };
+          throw error;
+        })
+        .finally(() => {
+          this.bankInflight = null;
+        });
+    }
+    return this.bankInflight;
+  }
 
+  private async fetchBanks(): Promise<PagaBank[]> {
     const reference = newReference('banks');
-    const raw = await this.collect('banks', { referenceNumber: reference }, [reference]);
+    // The Business API's own bank list: its ids are the ones its transfer and account-lookup calls expect.
+    const raw = await this.business('getBanks', { referenceNumber: reference }, [reference]);
     const banks = Array.isArray(raw.banks)
       ? raw.banks
           .map((entry) => asRecord(entry))
@@ -468,10 +498,13 @@ export class PagaService {
       `${this.required('paga.apiKey')}:${this.required('paga.apiSecret')}`,
     ).toString('base64');
 
+    const hashKey = this.requiredHashKey();
+    const hash = pagaHash(hashValues, hashKey);
+
     const raw = await this.send('collect', operation, body, {
       'content-type': 'application/json',
       authorization: `Basic ${credentials}`,
-      hash: pagaHash(hashValues, this.requiredHashKey()),
+      hash,
     });
 
     const code = String(raw.statusCode ?? '');
@@ -495,19 +528,37 @@ export class PagaService {
       throw new BadGatewayException(`Paga ${api} base URL is not configured`);
     }
 
+    const url = `${baseUrl}/${operation}`;
+
+    // CRITICAL: Paga Collect API requires Accept-Language: en header.
+    // Node's fetch sends Accept-Language: * by default, which causes HTTP 500 "system error".
+    // See: https://paga-slack-thread (Sherif-deen Abdur-roheem resolution)
+    const requestHeaders: Record<string, string> = {
+      ...headers,
+      'accept-language': 'en',
+    };
+
+    const started = Date.now();
     let response: Response;
     try {
-      response = await fetch(`${baseUrl}/${operation}`, {
+      response = await fetch(url, {
         method: 'POST',
-        headers,
+        headers: requestHeaders,
         body: JSON.stringify(body),
       });
     } catch (error) {
-      this.logger.error(`Paga ${api} ${operation} network error: ${String(error)}`);
+      this.logger.error(
+        `Paga ${api} ${operation} network error after ${Date.now() - started}ms: ${String(error)}`,
+      );
       throw new BadGatewayException('Paga request failed');
     }
 
     const text = await response.text();
+    const elapsed = Date.now() - started;
+
+    // Status and timing only: requests carry the API credentials, and bodies carry account numbers and names.
+    this.logger.log(`Paga ${api} ${operation} -> ${response.status} ${elapsed}ms`);
+
     if (!response.ok) {
       let detail = text;
       try {
@@ -516,7 +567,9 @@ export class PagaService {
       } catch {
         // keep the raw body
       }
-      this.logger.error(`Paga ${api} ${operation} failed: ${response.status} ${text}`);
+      this.logger.error(
+        `Paga ${api} ${operation} failed: ${response.status} ${text.slice(0, 300)}`,
+      );
       throw new BadGatewayException(
         `Paga ${api} ${operation} failed (${response.status}): ${detail || 'unknown error'}`,
       );
@@ -587,7 +640,7 @@ function statusFromOperation(raw: Record<string, unknown>): 'pending' | 'complet
   return statusFromText(raw.transactionStatus);
 }
 
-function statusFromText(value: unknown): 'pending' | 'completed' | 'failed' {
+export function statusFromText(value: unknown): 'pending' | 'completed' | 'failed' {
   const status = String(value ?? '').toUpperCase();
   if (['SUCCESSFUL', 'SUCCESS', 'COMPLETED', 'COMPLETE'].includes(status)) return 'completed';
   if (['FAILED', 'FAILURE', 'REVERSED', 'CANCELLED'].includes(status)) return 'failed';

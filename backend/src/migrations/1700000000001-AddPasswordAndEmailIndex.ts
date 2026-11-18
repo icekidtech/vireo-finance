@@ -8,9 +8,7 @@ export class AddPasswordAndEmailIndex1700000000001 implements MigrationInterface
     await queryRunner.query(
       `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "passwordHash" varchar(255)`,
     );
-    await queryRunner.query(
-      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "email" varchar(120)`,
-    );
+    await queryRunner.query(`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "email" varchar(120)`);
     await queryRunner.query(
       `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "dateOfBirth" varchar(32)`,
     );

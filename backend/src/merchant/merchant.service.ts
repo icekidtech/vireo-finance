@@ -1,14 +1,21 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, LessThan, MoreThanOrEqual, Repository } from 'typeorm';
 import { AccountsService } from '../accounts/accounts.service';
+import { Challenge } from '../challenges/challenge.entity';
+import { ChallengesService } from '../challenges/challenges.service';
 import {
+  ChallengeType,
   HoldStatus,
   LedgerDirection,
   LedgerTransactionType,
@@ -20,15 +27,24 @@ import { formatMinor, parseAmountToMinor, assertPositive } from '../database/mon
 import { Hold } from '../ledger/hold.entity';
 import { LedgerService } from '../ledger/ledger.service';
 import { PagaService } from '../paga/paga.service';
-import { CreateOrderDto, OnboardMerchantDto } from './dto/merchant.dto';
+import { PinService } from '../pin/pin.service';
+import {
+  CreateOrderDto,
+  CreateSettlementDraftDto,
+  OnboardMerchantDto,
+  UpdateMerchantDto,
+} from './dto/merchant.dto';
 import { Merchant } from './merchant.entity';
 import { MerchantOrder } from './merchant-order.entity';
+import { BUSINESS_LEVEL_FOR, DEFAULT_CASHOUT_LIMITS } from '../kyc/tiers';
 import { Settlement } from './settlement.entity';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class MerchantService {
+  private readonly logger = new Logger(MerchantService.name);
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(Merchant) private readonly merchants: Repository<Merchant>,
@@ -36,7 +52,10 @@ export class MerchantService {
     @InjectRepository(Settlement) private readonly settlements: Repository<Settlement>,
     private readonly accounts: AccountsService,
     private readonly ledger: LedgerService,
+    private readonly challenges: ChallengesService,
     private readonly paga: PagaService,
+    @Optional() private readonly config?: ConfigService,
+    @Optional() private readonly pins?: PinService,
   ) {}
 
   async onboard(userId: string, dto: OnboardMerchantDto) {
@@ -45,6 +64,15 @@ export class MerchantService {
     if (existing) {
       throw new ConflictException('Merchant handle is already taken');
     }
+    const owned = await this.merchants.findOne({ where: { ownerUserId: userId } });
+    if (owned) {
+      throw new ConflictException('This account already has a merchant profile');
+    }
+
+    const bank = await this.resolveSettlementBank(
+      dto.settlementBankCode,
+      dto.settlementAccountNumber,
+    );
 
     const merchant = await this.dataSource.transaction(async (manager) => {
       const saved = await manager.getRepository(Merchant).save(
@@ -53,8 +81,9 @@ export class MerchantService {
           handle,
           businessName: dto.businessName.trim(),
           kybStatus: 'pending',
-          settlementBankCode: dto.settlementBankCode ?? null,
-          settlementAccountNumber: dto.settlementAccountNumber ?? null,
+          settlementBankCode: bank?.bankCode ?? null,
+          settlementAccountNumber: bank?.accountNumber ?? null,
+          settlementAccountName: bank?.accountName ?? null,
           status: 'active',
         }),
       );
@@ -64,6 +93,25 @@ export class MerchantService {
     });
 
     return presentMerchant(merchant);
+  }
+
+  /**
+   * Verifies a payout account with the bank and returns the holder's name.
+   * Both fields or neither; a failed verification rejects rather than saving
+   * an unverified destination.
+   */
+  private async resolveSettlementBank(bankCode?: string, accountNumber?: string) {
+    if (!bankCode && !accountNumber) return null;
+    if (!bankCode || !accountNumber) {
+      throw new BadRequestException('Select a bank and enter the account number together');
+    }
+    const result = await this.paga.validateBankAccount({
+      bankCode,
+      accountNumber,
+      amountMinor: 100n,
+      reference: `val_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
+    });
+    return { bankCode: result.bankUuid, accountNumber, accountName: result.accountName };
   }
 
   async getByOwner(userId: string): Promise<Merchant> {
@@ -76,6 +124,56 @@ export class MerchantService {
 
   async getProfile(userId: string) {
     return presentMerchant(await this.getByOwner(userId));
+  }
+
+  /**
+   * Updates the business name and/or payout bank account. Bank details are a
+   * fraud target (redirecting settlements), so they must be supplied as a
+   * complete set and cannot change while a payout is in flight. Each payout is
+   * still signed on the owner's device with the destination shown for approval.
+   */
+  async updateProfile(userId: string, dto: UpdateMerchantDto) {
+    const merchant = await this.getByOwner(userId);
+    const bankFields = [dto.settlementBankCode, dto.settlementAccountNumber];
+    const bankProvided = bankFields.filter((v) => v !== undefined).length;
+
+    if (bankProvided > 0 && bankProvided < bankFields.length) {
+      throw new BadRequestException(
+        'settlementBankCode and settlementAccountNumber must be provided together',
+      );
+    }
+    if (dto.businessName === undefined && bankProvided === 0) {
+      throw new BadRequestException('Nothing to update');
+    }
+
+    if (bankProvided > 0) {
+      const inFlight = await this.settlements.count({
+        where: {
+          merchantId: merchant.id,
+          status: In([
+            SettlementStatus.DRAFT,
+            SettlementStatus.PENDING,
+            SettlementStatus.PROCESSING,
+          ]),
+        },
+      });
+      if (inFlight > 0) {
+        throw new ConflictException('Bank details cannot change while a settlement is in progress');
+      }
+      // The holder's name comes from the bank, never from the client.
+      const bank = await this.resolveSettlementBank(
+        dto.settlementBankCode,
+        dto.settlementAccountNumber,
+      );
+      merchant.settlementBankCode = bank!.bankCode;
+      merchant.settlementAccountNumber = bank!.accountNumber;
+      merchant.settlementAccountName = bank!.accountName;
+    }
+    if (dto.businessName !== undefined) {
+      merchant.businessName = dto.businessName.trim();
+    }
+
+    return presentMerchant(await this.merchants.save(merchant));
   }
 
   async createOrder(userId: string, dto: CreateOrderDto) {
@@ -121,6 +219,66 @@ export class MerchantService {
     return presentOrder(order, merchant);
   }
 
+  async cancelOrder(userId: string, reference: string) {
+    const merchant = await this.getByOwner(userId);
+    // Lock the order so a concurrent payment cannot race the cancellation.
+    const order = await this.ledger.runInTransaction(async (manager) => {
+      const locked = await manager.getRepository(MerchantOrder).findOne({
+        where: { reference, merchantId: merchant.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!locked) {
+        throw new NotFoundException('Merchant order not found');
+      }
+      if (locked.status === MerchantOrderStatus.PAID) {
+        throw new BadRequestException('Paid orders cannot be cancelled');
+      }
+      if (
+        locked.status === MerchantOrderStatus.CANCELLED ||
+        locked.status === MerchantOrderStatus.EXPIRED
+      ) {
+        return locked;
+      }
+      locked.status = MerchantOrderStatus.CANCELLED;
+      return manager.getRepository(MerchantOrder).save(locked);
+    });
+    return presentOrder(order, merchant);
+  }
+
+  /**
+   * Bulk-expire open orders past their TTL. Called by the reconciliation job;
+   * the payment path also expires lazily, so this only cleans up listings.
+   */
+  async expireOverdueOrders(now: Date = new Date()): Promise<number> {
+    const result = await this.orders.update(
+      { status: MerchantOrderStatus.OPEN, expiresAt: LessThan(now) },
+      { status: MerchantOrderStatus.EXPIRED },
+    );
+    return result.affected ?? 0;
+  }
+
+  async listAllMerchants() {
+    const rows = await this.merchants.find({ order: { createdAt: 'DESC' }, take: 100 });
+    return rows.map(presentMerchant);
+  }
+
+  async verifyKyb(merchantId: string, status: 'verified' | 'rejected') {
+    const merchant = await this.merchants.findOne({ where: { id: merchantId } });
+    if (!merchant) {
+      throw new NotFoundException('Merchant not found');
+    }
+    merchant.kybStatus = status;
+    await this.merchants.save(merchant);
+    return presentMerchant(merchant);
+  }
+
+  /** Every settled money movement on the business balance: transfers and deposits in, cash-outs out. */
+  async activity(userId: string, limit = 50) {
+    const merchant = await this.getByOwner(userId);
+    const account = await this.accounts.getMerchantAccount(merchant.id);
+    return this.ledger.getActivityFeed(account.id, limit);
+  }
+
   async dashboard(userId: string) {
     const merchant = await this.getByOwner(userId);
     const account = await this.accounts.getMerchantAccount(merchant.id);
@@ -157,11 +315,48 @@ export class MerchantService {
     };
   }
 
-  async settle(userId: string, amountInput?: string) {
+  /** Today's cash-outs (anything not failed) plus this one must fit the level's daily cap. */
+  private async assertWithinCashoutLimit(merchant: Merchant, amount: bigint): Promise<void> {
+    const level = BUSINESS_LEVEL_FOR(
+      merchant.kybStatus === 'verified',
+      merchant.registrationStatus === 'verified',
+    );
+    const limits =
+      this.config?.get<Record<number, bigint>>('merchantLimits.cashoutDailyLimits') ??
+      DEFAULT_CASHOUT_LIMITS;
+    const limit = limits[level] ?? 0n;
+
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const today = await this.settlements.find({
+      where: {
+        merchantId: merchant.id,
+        createdAt: MoreThanOrEqual(startOfDay),
+        status: In([
+          SettlementStatus.DRAFT,
+          SettlementStatus.PENDING,
+          SettlementStatus.PROCESSING,
+          SettlementStatus.COMPLETED,
+        ]),
+      },
+    });
+    const used = today.reduce((sum, s) => sum + BigInt(s.amount), 0n);
+    if (used + amount > limit) {
+      throw new BadRequestException(
+        `Daily cash-out limit for your business level is ${formatMinor(limit)} NGN` +
+          (level < 2 ? '. Register your business to raise it.' : ''),
+      );
+    }
+  }
+
+  async createSettlementDraft(userId: string, dto: CreateSettlementDraftDto) {
     const merchant = await this.getByOwner(userId);
+    if (merchant.kybStatus !== 'verified') {
+      throw new BadRequestException('Merchant KYB must be verified before settling');
+    }
     const account = await this.accounts.getMerchantAccount(merchant.id);
     const balance = await this.ledger.getBalance(account.id);
-    const amount = amountInput ? parseAmountToMinor(amountInput) : balance.available;
+    const amount = dto.amount ? parseAmountToMinor(dto.amount) : balance.available;
     assertPositive(amount);
 
     if (amount > balance.available) {
@@ -170,34 +365,131 @@ export class MerchantService {
     if (!merchant.settlementBankCode || !merchant.settlementAccountNumber) {
       throw new BadRequestException('Merchant settlement bank details are not set');
     }
+    await this.assertWithinCashoutLimit(merchant, amount);
 
-    const settlement = await this.settlements.save(
-      this.settlements.create({
-        merchantId: merchant.id,
-        amount: amount.toString(),
-        status: SettlementStatus.PENDING,
-      }),
-    );
-
-    await this.ledger.runInTransaction(async (manager) => {
+    // Create the draft and reserve funds atomically under the account lock, so
+    // concurrent settlements cannot over-reserve or leave an orphaned draft.
+    const settlement = await this.ledger.runInTransaction(async (manager) => {
+      const saved = await manager.getRepository(Settlement).save(
+        manager.getRepository(Settlement).create({
+          merchantId: merchant.id,
+          amount: amount.toString(),
+          status: SettlementStatus.DRAFT,
+        }),
+      );
       await this.ledger.createHold(manager, {
         accountId: account.id,
         amount,
-        reference: `settlement:${settlement.id}`,
+        reference: `settlement:${saved.id}`,
       });
+      return saved;
     });
+
+    // Bind a device challenge to the draft. If the device is invalid the draft
+    // is failed and its hold released, so no funds stay reserved without a way
+    // to authorize the payout.
+    let challenge;
+    try {
+      challenge = await this.challenges.issue({
+        userId,
+        deviceId: dto.deviceId,
+        type: ChallengeType.SETTLEMENT,
+        payload: {
+          settlementId: settlement.id,
+          type: 'settlement',
+          amountMinor: settlement.amount,
+          currency: 'NGN',
+          bankCode: merchant.settlementBankCode,
+          accountNumber: merchant.settlementAccountNumber,
+          accountName: merchant.settlementAccountName ?? merchant.businessName,
+        },
+      });
+    } catch (error) {
+      await this.failSettlementById(settlement.id, 'Settlement challenge could not be issued');
+      throw error;
+    }
+
+    settlement.challengeId = challenge.id;
+    await this.settlements.save(settlement);
+
+    return { settlement: presentSettlement(settlement), challenge: presentChallenge(challenge) };
+  }
+
+  async submitSettlement(
+    userId: string,
+    settlementId: string,
+    signature: string,
+    confirmation: { approval: 'biometric' | 'pin'; pin?: string } = { approval: 'biometric' },
+  ) {
+    const merchant = await this.getByOwner(userId);
+
+    // A PIN confirmation is checked before the challenge is consumed or any money is touched,
+    // so a wrong PIN never uses up the payout's one-time signature.
+    if (confirmation.approval === 'pin') {
+      if (!this.pins) throw new BadRequestException('PIN confirmation is not available');
+      const existing = await this.settlements.findOne({ where: { id: settlementId } });
+      if (!existing || existing.merchantId !== merchant.id) {
+        throw new NotFoundException('Settlement not found');
+      }
+      if (existing.status === SettlementStatus.DRAFT) {
+        await this.pins.verify(userId, confirmation.pin ?? '');
+      }
+    }
+
+    // Consume the signed challenge and move DRAFT -> PENDING atomically. Paga is
+    // called only after the challenge is committed as used.
+    const settlement = await this.ledger.runInTransaction(async (manager) => {
+      const locked = await manager.getRepository(Settlement).findOne({
+        where: { id: settlementId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!locked || locked.merchantId !== merchant.id) {
+        throw new NotFoundException('Settlement not found');
+      }
+      if (
+        locked.status === SettlementStatus.PROCESSING ||
+        locked.status === SettlementStatus.COMPLETED
+      ) {
+        return locked;
+      }
+      if (locked.status !== SettlementStatus.DRAFT) {
+        throw new BadRequestException(`Settlement is ${locked.status}`);
+      }
+      if (!locked.challengeId) {
+        throw new BadRequestException('Settlement has no challenge');
+      }
+      await this.consumeForSettlement(manager, locked, userId, signature);
+      locked.status = SettlementStatus.PENDING;
+      // Record the payout reference before calling Paga so reconciliation can
+      // resolve the outcome even if the response is lost.
+      locked.pagaReference = `settlement:${locked.id}`;
+      return manager.getRepository(Settlement).save(locked);
+    });
+
+    if (settlement.status !== SettlementStatus.PENDING) {
+      return presentSettlement(settlement);
+    }
 
     let result;
     try {
       result = await this.paga.depositToBank({
-        amountMinor: amount,
+        amountMinor: BigInt(settlement.amount),
         reference: `settlement:${settlement.id}`,
-        bankCode: merchant.settlementBankCode,
-        accountNumber: merchant.settlementAccountNumber,
+        bankCode: merchant.settlementBankCode!,
+        accountNumber: merchant.settlementAccountNumber!,
         accountName: merchant.settlementAccountName ?? merchant.businessName,
         narration: 'Vireo merchant settlement',
       });
     } catch (error) {
+      if (error instanceof BadGatewayException) {
+        // Ambiguous outcome: Paga may have accepted the payout. Keep the
+        // settlement PENDING (funds held) for reconciliation/callback.
+        this.logger.warn(
+          `Paga settlement outcome unknown for settlement=${settlement.id}: ${String(error)}`,
+        );
+        const latest = await this.settlements.findOne({ where: { id: settlement.id } });
+        return presentSettlement(latest ?? settlement);
+      }
       await this.failSettlementById(settlement.id, 'Paga payout request failed');
       throw error;
     }
@@ -221,6 +513,34 @@ export class MerchantService {
     );
     const latest = await this.settlements.findOne({ where: { id: settlement.id } });
     return presentSettlement(latest ?? settlement);
+  }
+
+  private async consumeForSettlement(
+    manager: EntityManager,
+    settlement: Settlement,
+    userId: string,
+    signature: string,
+  ): Promise<void> {
+    const challenge = await manager.getRepository(Challenge).findOne({
+      where: { id: settlement.challengeId! },
+    });
+    if (!challenge) {
+      throw new NotFoundException('Challenge not found');
+    }
+    if (challenge.payload.settlementId !== settlement.id) {
+      throw new BadRequestException('Challenge is not bound to this settlement');
+    }
+    if (challenge.payload.amountMinor !== settlement.amount) {
+      throw new BadRequestException('Challenge amount does not match the settlement');
+    }
+
+    await this.challenges.consume(manager, {
+      challengeId: settlement.challengeId!,
+      userId,
+      type: ChallengeType.SETTLEMENT,
+      expectedPayload: challenge.payload,
+      signature,
+    });
   }
 
   async listSettlements(userId: string) {
@@ -346,6 +666,9 @@ export function presentMerchant(merchant: Merchant) {
     handle: merchant.handle,
     businessName: merchant.businessName,
     kybStatus: merchant.kybStatus,
+    registrationStatus: merchant.registrationStatus,
+    cacNumber: merchant.cacNumber,
+    cacDocumentId: merchant.cacDocumentId,
     status: merchant.status,
     settlementBankCode: merchant.settlementBankCode,
     settlementAccountNumber: merchant.settlementAccountNumber,
@@ -379,5 +702,16 @@ export function presentSettlement(settlement: Settlement) {
     failureReason: settlement.failureReason,
     createdAt: settlement.createdAt,
     updatedAt: settlement.updatedAt,
+  };
+}
+
+function presentChallenge(challenge: Challenge) {
+  return {
+    id: challenge.id,
+    type: challenge.type,
+    nonce: challenge.nonce,
+    payload: challenge.payload,
+    payloadHash: challenge.payloadHash,
+    expiresAt: challenge.expiresAt,
   };
 }

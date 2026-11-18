@@ -6,14 +6,15 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { UserStatus } from '../common/enums';
+import { UserRole, UserStatus } from '../common/enums';
 
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Index({ unique: true })
+  // Email-only accounts store an empty phone, so uniqueness only applies to real numbers.
+  @Index('IDX_users_phone', { unique: true, where: `"phone" <> ''` })
   @Column({ type: 'varchar', length: 32 })
   phone: string;
 
@@ -39,6 +40,9 @@ export class User {
 
   @Column({ type: 'enum', enum: UserStatus, default: UserStatus.ACTIVE })
   status: UserStatus;
+
+  @Column({ type: 'varchar', length: 20, default: UserRole.USER })
+  role: UserRole;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

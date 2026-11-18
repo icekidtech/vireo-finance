@@ -6,9 +6,7 @@ import { WEBHOOK_QUEUE } from '../queues/queues.constants';
 
 @Controller('webhooks')
 export class WebhooksController {
-  constructor(
-    @InjectQueue(WEBHOOK_QUEUE) private readonly webhookQueue: Queue,
-  ) {}
+  constructor(@InjectQueue(WEBHOOK_QUEUE) private readonly webhookQueue: Queue) {}
 
   @Post('paga')
   @HttpCode(200)

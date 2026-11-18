@@ -42,6 +42,31 @@ export class AccountsService {
     return manager ? work(manager) : this.dataSource.transaction(work);
   }
 
+  /** One of OUR deposit account numbers (a wallet's or a business's), or null for any outside number. */
+  async findOwnDepositAccount(
+    accountNumber: string,
+  ): Promise<{ accountId: string; userId: string } | null> {
+    const va = await this.virtualAccounts.findOne({ where: { accountNumber, status: 'active' } });
+    return va ? { accountId: va.accountId, userId: va.userId } : null;
+  }
+
+  /** The user who owns a personal wallet account, or null for any other account. */
+  async walletOwner(accountId: string): Promise<string | null> {
+    const account = await this.accounts.findOne({ where: { id: accountId } });
+    return account && account.ownerType === AccountOwnerType.USER ? account.ownerId : null;
+  }
+
+  /** Money held back by the tier balance cap (see BalanceCapService). */
+  async restrictedFor(walletId: string): Promise<bigint> {
+    const rows = await this.dataSource.query(
+      `SELECT COALESCE(SUM("amount"), 0)::text AS "restricted"
+       FROM "holds"
+       WHERE "accountId" = $1 AND "status" = 'active' AND "reference" LIKE 'kyc-cap:%'`,
+      [walletId],
+    );
+    return BigInt(rows[0]?.restricted ?? '0');
+  }
+
   async getWallet(userId: string): Promise<Account> {
     const account = await this.accounts.findOne({
       where: {
@@ -97,7 +122,8 @@ export class AccountsService {
     );
   }
 
-  async getVirtualAccount(userId: string): Promise<VirtualAccount | null> {
-    return this.virtualAccounts.findOne({ where: { userId, status: 'active' } });
+  /** The deposit account that credits one specific ledger account (a wallet or a merchant balance). */
+  async getVirtualAccountForAccount(accountId: string): Promise<VirtualAccount | null> {
+    return this.virtualAccounts.findOne({ where: { accountId, status: 'active' } });
   }
 }

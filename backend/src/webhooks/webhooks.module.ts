@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AccountsModule } from '../accounts/accounts.module';
 import { VirtualAccount } from '../accounts/virtual-account.entity';
 import { LedgerModule } from '../ledger/ledger.module';
 import { MerchantModule } from '../merchant/merchant.module';
@@ -18,6 +19,7 @@ import { WebhooksService } from './webhooks.service';
     TypeOrmModule.forFeature([PagaEvent, VirtualAccount]),
     BullModule.registerQueue({ name: WEBHOOK_QUEUE }),
     LedgerModule,
+    AccountsModule,
     PagaModule,
     NotificationsModule,
     TransfersModule,

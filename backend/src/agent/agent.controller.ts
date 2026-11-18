@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AgentService } from './agent.service';
-import { RunAgentToolDto, ChatMessageDto } from './dto/agent.dto';
+import { ChatMessageDto, RunAgentToolDto } from './dto/agent.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('agent')
