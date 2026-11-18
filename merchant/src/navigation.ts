@@ -7,7 +7,7 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
 export type TabParamList = {
   Home: undefined;
   Charge: undefined;
-  Activity: { initialTab?: 'sales' | 'payouts' } | undefined;
+  Activity: { initialTab?: 'all' | 'sales' | 'payouts' } | undefined;
   Account: undefined;
 };
 

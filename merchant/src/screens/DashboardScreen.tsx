@@ -33,7 +33,10 @@ type Props = CompositeScreenProps<
 export default function DashboardScreen({ navigation }: Props) {
   const { user } = useAuth();
   const { data, loading, refreshing, error, refresh } = useLoad(
-    () => api.getDashboard(),
+    async () => {
+      const [dashboard, activity] = await Promise.all([api.getDashboard(), api.getMerchantActivity(5)]);
+      return { ...dashboard, activity };
+    },
     'Could not load your dashboard',
   );
 
@@ -136,18 +139,16 @@ export default function DashboardScreen({ navigation }: Props) {
           >
             Recent activity
           </SectionTitle>
-          {data.recentOrders.length === 0 ? (
-            <Empty title="No sales yet" body="Tap Charge to create your first payment request." />
+          {data.activity.length === 0 ? (
+            <Empty title="No activity yet" body="Money you receive and cash out will appear here. Tap Charge to create a payment request." />
           ) : (
-            data.recentOrders.map((order) => (
+            data.activity.map((item) => (
               <ListRow
-                key={order.id}
-                leading={<Avatar label={order.note || order.reference} tone={order.status === 'paid' ? 'accent' : 'surface'} />}
-                title={order.note || 'Payment request'}
-                subtitle={`${formatRelative(order.createdAt)} · ${order.reference.slice(0, 12)}`}
-                trailing={formatMoney(order.amount, order.currency)}
-                trailingSub={<StatusPill status={order.status} />}
-                onPress={() => navigation.navigate('OrderDetail', { reference: order.reference })}
+                key={item.id}
+                leading={<Avatar label={item.counterparty} tone={item.direction === 'in' ? 'accent' : 'surface'} />}
+                title={item.counterparty}
+                subtitle={formatRelative(item.createdAt)}
+                trailing={`${item.direction === 'in' ? '+' : '−'}${formatMoney(item.amount, item.currency)}`}
               />
             ))
           )}

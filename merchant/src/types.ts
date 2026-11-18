@@ -108,6 +108,19 @@ export interface SettlementDraft {
   challenge: Challenge;
 }
 
+/** One settled movement of money on the business balance. */
+export interface ActivityItem {
+  id: string;
+  type: string;
+  direction: 'in' | 'out';
+  amount: string;
+  currency: string;
+  counterparty: string;
+  transferId: string | null;
+  reference: string;
+  createdAt: string;
+}
+
 export interface MerchantDashboard {
   merchant: Merchant;
   balance: { available: string; held: string; currency: string };

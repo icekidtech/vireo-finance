@@ -25,14 +25,15 @@ type Props = CompositeScreenProps<
   StackScreenProps<RootStackParamList>
 >;
 
-type Tab = 'sales' | 'payouts';
+type Tab = 'all' | 'sales' | 'payouts';
 
 export default function ActivityScreen({ navigation, route }: Props) {
-  const [tab, setTab] = useState<Tab>(route.params?.initialTab ?? 'sales');
+  const [tab, setTab] = useState<Tab>(route.params?.initialTab ?? 'all');
+  const money = useLoad(() => api.getMerchantActivity(100), 'Could not load activity');
   const orders = useLoad(() => api.listOrders(), 'Could not load sales');
   const payouts = useLoad(() => api.listSettlements(), 'Could not load payouts');
 
-  const active = tab === 'sales' ? orders : payouts;
+  const active = tab === 'all' ? money : tab === 'sales' ? orders : payouts;
   const loading = active.loading && !active.data;
 
   return (
@@ -42,6 +43,7 @@ export default function ActivityScreen({ navigation, route }: Props) {
         value={tab}
         onChange={setTab}
         options={[
+          { key: 'all', label: 'All' },
           { key: 'sales', label: 'Sales' },
           { key: 'payouts', label: 'Payouts' },
         ]}
@@ -50,6 +52,20 @@ export default function ActivityScreen({ navigation, route }: Props) {
       <ErrorBanner message={active.error} />
       {loading ? (
         <Loading />
+      ) : tab === 'all' ? (
+        money.data && money.data.length > 0 ? (
+          money.data.map((item) => (
+            <ListRow
+              key={item.id}
+              leading={<Avatar label={item.counterparty} tone={item.direction === 'in' ? 'accent' : 'surface'} />}
+              title={item.counterparty}
+              subtitle={formatRelative(item.createdAt)}
+              trailing={`${item.direction === 'in' ? '+' : '−'}${formatMoney(item.amount, item.currency)}`}
+            />
+          ))
+        ) : (
+          <Empty title="No activity yet" body="Money you receive and cash out will appear here." />
+        )
       ) : tab === 'sales' ? (
         orders.data && orders.data.length > 0 ? (
           orders.data.map((order) => (

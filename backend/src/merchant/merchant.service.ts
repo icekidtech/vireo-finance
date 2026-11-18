@@ -272,6 +272,13 @@ export class MerchantService {
     return presentMerchant(merchant);
   }
 
+  /** Every settled money movement on the business balance: transfers and deposits in, cash-outs out. */
+  async activity(userId: string, limit = 50) {
+    const merchant = await this.getByOwner(userId);
+    const account = await this.accounts.getMerchantAccount(merchant.id);
+    return this.ledger.getActivityFeed(account.id, limit);
+  }
+
   async dashboard(userId: string) {
     const merchant = await this.getByOwner(userId);
     const account = await this.accounts.getMerchantAccount(merchant.id);

@@ -235,6 +235,34 @@ export class LedgerService {
     return rows;
   }
 
+  /**
+   * Human-readable feed of every settled movement on one account, in or out, with
+   * the counterparty resolved. Used for wallets and for a business's balance.
+   */
+  async getActivityFeed(accountId: string, limit = 50) {
+    const parsed = Math.min(Math.max(Number.isFinite(limit) ? limit : 50, 1), 100);
+    const rows: Array<Record<string, string | null>> = await this.dataSource.query(
+      `SELECT e."id", e."direction", e."amount"::text AS "amount", e."currency", e."createdAt",
+              t."type", t."reference",
+              tr."id" AS "transferId", tr."recipientName", tr."fee"::text AS "fee",
+              u."name" AS "initiatorName", m."businessName" AS "merchantName"
+       FROM "ledger_entries" e
+       JOIN "ledger_transactions" t ON t."id" = e."transactionId"
+       LEFT JOIN "transfers" tr
+         ON t."type" IN ('internal_transfer', 'merchant_payment', 'bank_transfer')
+        AND tr."id"::text = t."reference"
+       LEFT JOIN "users" u ON u."id" = tr."initiatedByUserId"
+       LEFT JOIN "accounts" da
+         ON da."id" = tr."destinationAccountId" AND da."ownerType" = 'merchant'
+       LEFT JOIN "merchants" m ON m."id"::text = da."ownerId"::text
+       WHERE e."accountId" = $1
+       ORDER BY e."createdAt" DESC
+       LIMIT $2`,
+      [accountId, parsed],
+    );
+    return rows.map((row) => presentActivityRow(row));
+  }
+
   async createHold(manager: EntityManager, input: CreateHoldInput): Promise<Hold> {
     assertPositive(input.amount);
     const [row] = await this.lockAccounts(manager, [input.accountId]);
@@ -342,4 +370,37 @@ export class LedgerService {
       held: heldByAccount.get(account.id) ?? '0',
     }));
   }
+}
+
+/** Turns one ledger row into what an app shows: direction, who it was with, and a readable label. */
+export function presentActivityRow(row: Record<string, string | null>) {
+  const outgoing = row.direction === LedgerDirection.DEBIT;
+  let counterparty: string;
+  if (outgoing) {
+    counterparty =
+      row.type === 'settlement'
+        ? 'Cash out to bank'
+        : row.type === 'fee'
+          ? 'Fee'
+          : (row.merchantName ??
+            row.recipientName ??
+            (row.type === 'bank_transfer' ? 'Bank transfer' : 'Transfer'));
+  } else if (row.type === 'inbound_credit') {
+    counterparty = 'Bank deposit';
+  } else if (row.type === 'settlement' || row.type === 'reversal' || row.type === 'refund') {
+    counterparty = row.type === 'settlement' ? 'Cash out returned' : 'Refund';
+  } else {
+    counterparty = row.initiatorName ?? 'Received';
+  }
+  return {
+    id: row.id,
+    type: row.type,
+    direction: outgoing ? 'out' : 'in',
+    amount: formatMinor(BigInt(row.amount ?? '0')),
+    currency: row.currency,
+    counterparty,
+    transferId: row.transferId,
+    reference: row.reference,
+    createdAt: row.createdAt,
+  };
 }

@@ -41,48 +41,7 @@ export class LedgerController {
   @Get('activity')
   async activity(@CurrentUser() user: AuthenticatedUser, @Query('limit') limit?: string) {
     const accountId = await this.resolveAccountId(user.userId);
-    const parsed = limit ? Number.parseInt(limit, 10) : 50;
-    const rows: Array<Record<string, string | null>> = await this.dataSource.query(
-      `SELECT e."id", e."direction", e."amount"::text AS "amount", e."currency", e."createdAt",
-              t."type", t."reference",
-              tr."id" AS "transferId", tr."recipientName", tr."fee"::text AS "fee",
-              u."name" AS "initiatorName", m."businessName" AS "merchantName"
-       FROM "ledger_entries" e
-       JOIN "ledger_transactions" t ON t."id" = e."transactionId"
-       LEFT JOIN "transfers" tr
-         ON t."type" IN ('internal_transfer', 'merchant_payment', 'bank_transfer')
-        AND tr."id"::text = t."reference"
-       LEFT JOIN "users" u ON u."id" = tr."initiatedByUserId"
-       LEFT JOIN "accounts" da
-         ON da."id" = tr."destinationAccountId" AND da."ownerType" = 'merchant'
-       LEFT JOIN "merchants" m ON m."id"::text = da."ownerId"::text
-       WHERE e."accountId" = $1
-       ORDER BY e."createdAt" DESC
-       LIMIT $2`,
-      [accountId, Math.min(Math.max(Number.isFinite(parsed) ? parsed : 50, 1), 100)],
-    );
-
-    return rows.map((row) => {
-      const outgoing = row.direction === LedgerDirection.DEBIT;
-      const counterparty = outgoing
-        ? (row.merchantName ??
-          row.recipientName ??
-          (row.type === 'bank_transfer' ? 'Bank transfer' : 'Transfer'))
-        : row.type === 'inbound_credit'
-          ? 'Bank deposit'
-          : (row.initiatorName ?? 'Received');
-      return {
-        id: row.id,
-        type: row.type,
-        direction: outgoing ? 'out' : 'in',
-        amount: formatMinor(BigInt(row.amount ?? '0')),
-        currency: row.currency,
-        counterparty,
-        transferId: row.transferId,
-        reference: row.reference,
-        createdAt: row.createdAt,
-      };
-    });
+    return this.ledger.getActivityFeed(accountId, limit ? Number.parseInt(limit, 10) : 50);
   }
 
   /**

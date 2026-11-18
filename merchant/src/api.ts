@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import type { PickedFile } from './lib/documents';
 import type {
+  ActivityItem,
   AppNotification,
   BusinessLevels,
   KycState,
@@ -235,6 +236,12 @@ export class VireoApi {
       '/transfers/bank-lookup',
       payload,
     );
+    return data;
+  }
+
+  /** Money in and out of the business balance: transfers and deposits received, cash-outs sent. */
+  async getMerchantActivity(limit = 50) {
+    const { data } = await this.client.get<ActivityItem[]>('/merchants/me/activity', { params: { limit } });
     return data;
   }
 

@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
@@ -47,6 +57,12 @@ export class MerchantController {
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.merchants.getProfile(user.userId);
+  }
+
+  /** Money in and out of the business balance (not only orders and payouts). */
+  @Get('me/activity')
+  activity(@CurrentUser() user: AuthenticatedUser, @Query('limit') limit?: string) {
+    return this.merchants.activity(user.userId, limit ? Number.parseInt(limit, 10) : 50);
   }
 
   @Get('me/levels')
