@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from 'crypto';
 import {
   BadRequestException,
-  ForbiddenException,
   HttpException,
   HttpStatus,
   Inject,

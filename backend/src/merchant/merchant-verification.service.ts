@@ -22,7 +22,7 @@ import {
 } from '../kyc/tiers';
 import { DocumentsService } from '../documents/documents.service';
 import { IDENTITY_VERIFIER, IdentityVerifier } from '../kyc/identity-verifier';
-import { businessNameSimilarity, nameMatches } from '../kyc/names';
+import { businessNameSimilarity } from '../kyc/names';
 import { Merchant } from './merchant.entity';
 
 export type VerificationReason = 'verified' | 'rejected' | 'identity_required';

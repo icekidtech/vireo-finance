@@ -2,10 +2,9 @@ import { Controller, Get, NotFoundException, Query, UseGuards } from '@nestjs/co
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Account } from '../accounts/account.entity';
-import { AccountOwnerType, AccountStatus, AccountType, LedgerDirection } from '../common/enums';
+import { AccountOwnerType, AccountStatus, AccountType } from '../common/enums';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { formatMinor } from '../database/money';
 import { LedgerService } from './ledger.service';
 
 @Controller('ledger')

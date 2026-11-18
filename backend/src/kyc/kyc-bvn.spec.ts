@@ -10,7 +10,6 @@ import { KycService } from './kyc.service';
 
 const KEY = randomBytes(32).toString('base64');
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
-const SELFIE = JPEG.toString('base64').padEnd(120, 'A');
 const dto = {
   bvn: '12345678901',
   firstName: 'Ada',
