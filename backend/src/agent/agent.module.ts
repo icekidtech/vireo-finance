@@ -7,6 +7,7 @@ import { TransfersModule } from '../transfers/transfers.module';
 import { User } from '../users/user.entity';
 import { AgentController } from './agent.controller';
 import { AgentService } from './agent.service';
+import { OpenAIService } from './llm/openai.service';
 import { AgentSession } from './agent-session.entity';
 import { AgentToolCall } from './agent-tool-call.entity';
 import { LlmService } from './llm/llm.service';

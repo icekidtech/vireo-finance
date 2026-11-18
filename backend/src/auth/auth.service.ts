@@ -1,25 +1,22 @@
 import {
-  BadRequestException,
   Injectable,
   Logger,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { randomInt } from 'crypto';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import * as bcrypt from 'bcrypt';
+import { DataSource, Repository } from 'typeorm';
 import { AccountsService } from '../accounts/accounts.service';
 import { PagaService } from '../paga/paga.service';
 import { hmacSha256Hex } from '../common/crypto';
 import { DeviceStatus, SignatureAlgorithm, UserRole, UserStatus } from '../common/enums';
 import { User } from '../users/user.entity';
 import { Device } from './device.entity';
-import { PhoneOtp } from './phone-otp.entity';
-import { RegisterDeviceDto, RegisterDto } from './dto/auth.dto';
-
-const MAX_OTP_ATTEMPTS = 5;
+import { LoginDto, RegisterDeviceDto, RegisterDto } from './dto/auth.dto';
+import { AppleAttestService } from './attestation/apple-attest.service';
+import { GooglePlayIntegrityService } from './attestation/google-play-integrity.service';
 
 @Injectable()
 export class AuthService {
@@ -29,19 +26,28 @@ export class AuthService {
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Device) private readonly devices: Repository<Device>,
-    @InjectRepository(PhoneOtp) private readonly otps: Repository<PhoneOtp>,
     private readonly accounts: AccountsService,
     private readonly paga: PagaService,
+    private readonly notifications: NotificationsService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly appleAttest: AppleAttestService,
+    private readonly googlePlayIntegrity: GooglePlayIntegrityService,
   ) {}
 
+  /* ------------------------------------------------------------------ */
+  /* Register (email + password)                                        */
+  /* ------------------------------------------------------------------ */
+
   async register(dto: RegisterDto) {
-    const phone = normalizePhone(dto.phone);
-    const existing = await this.users.findOne({ where: { phone } });
+    const email = dto.email.trim().toLowerCase();
+    const existing = await this.users.findOne({ where: { email } });
     if (existing) {
       return { user: toPublicUser(existing), created: false };
     }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const phone = dto.phone ? normalizePhone(dto.phone) : '';
 
     const { user, walletId } = await this.dataSource.transaction(async (manager) => {
       const savedUser = await manager.getRepository(User).save(
@@ -49,6 +55,9 @@ export class AuthService {
           phone,
           name: dto.name.trim(),
           handle: dto.handle?.toLowerCase() ?? null,
+          email,
+          passwordHash,
+          dateOfBirth: dto.dateOfBirth?.trim() ?? null,
           kycTier: 0,
           role: this.isAdminPhone(phone) ? UserRole.ADMIN : UserRole.USER,
         }),
@@ -57,6 +66,22 @@ export class AuthService {
       return { user: savedUser, walletId: account.id };
     });
 
+    // Register with Paga (best-effort)
+    const nameParts = splitFullName(user.name);
+    try {
+      await this.paga.registerCustomer({
+        referenceNumber: `reg_${user.id}`,
+        customerFirstName: nameParts.firstName,
+        customerLastName: nameParts.lastName,
+        customerPhoneNumber: user.phone,
+        customerEmail: user.email ?? undefined,
+        customerDateOfBirth: user.dateOfBirth ?? undefined,
+      });
+    } catch (error) {
+      this.logger.warn(`Paga customer registration failed for ${user.id}: ${String(error)}`);
+    }
+
+    // Provision virtual account (best-effort)
     try {
       const virtual = await this.paga.createVirtualAccount({
         userId: user.id,
@@ -68,28 +93,19 @@ export class AuthService {
       this.logger.warn(`Virtual account provisioning failed for ${user.id}: ${String(error)}`);
     }
 
+    // Send welcome email (best-effort)
+    try {
+      await this.notifications.sendWelcome(user);
+    } catch (error) {
+      this.logger.warn(`Welcome email failed for ${user.id}: ${String(error)}`);
+    }
+
     return { user: toPublicUser(user), created: true };
   }
 
-  async requestOtp(phoneInput: string) {
-    const phone = normalizePhone(phoneInput);
-    const user = await this.users.findOne({ where: { phone } });
-    if (!user) {
-      throw new NotFoundException('User is not registered');
-    }
-    if (user.status !== UserStatus.ACTIVE) {
-      throw new UnauthorizedException('User is not active');
-    }
-
-    const code = randomInt(100000, 1000000).toString();
-    const ttl = this.config.get<number>('otp.ttlSeconds') ?? 300;
-    await this.otps.save(
-      this.otps.create({
-        phone,
-        codeHash: this.hashOtp(phone, code),
-        expiresAt: new Date(Date.now() + ttl * 1000),
-      }),
-    );
+  /* ------------------------------------------------------------------ */
+  /* Login (email + password)                                           */
+  /* ------------------------------------------------------------------ */
 
     // Until an SMS gateway exists the code is written to the server log, only
     // when OTP_LOG_CODE is set (startup validation forbids it in production).
@@ -131,15 +147,38 @@ export class AuthService {
     const phone = normalizePhone(phoneInput);
     await this.consumeOtp(phone, code);
 
-    const user = await this.users.findOne({ where: { phone } });
-    if (!user) {
-      throw new NotFoundException('User is not registered');
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('Account is not active');
     }
 
     return { accessToken: this.issueToken(user.id), user: toPublicUser(user) };
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Device management (with attestation verification)                  */
+  /* ------------------------------------------------------------------ */
+
   async registerDevice(userId: string, dto: RegisterDeviceDto) {
+    let attestationState = 'unverified';
+
+    if (dto.attestationToken) {
+      if (dto.platform === DevicePlatform.IOS) {
+        const result = await this.appleAttest.verify(dto.attestationToken, userId);
+        attestationState = result.verified ? 'verified' : 'failed';
+        if (!result.verified) {
+          this.logger.warn(`Apple attestation failed for user ${userId}: ${result.error}`);
+        }
+      } else if (dto.platform === DevicePlatform.ANDROID) {
+        const result = await this.googlePlayIntegrity.verify(dto.attestationToken);
+        attestationState = result.verified ? 'verified' : 'failed';
+        if (!result.verified) {
+          this.logger.warn(`Play Integrity failed for user ${userId}: ${result.error}`);
+        }
+      } else {
+        attestationState = 'provided';
+      }
+    }
+
     const device = await this.devices.save(
       this.devices.create({
         userId,
@@ -165,7 +204,7 @@ export class AuthService {
   async revokeDevice(userId: string, deviceId: string) {
     const device = await this.devices.findOne({ where: { id: deviceId, userId } });
     if (!device) {
-      throw new NotFoundException('Device not found');
+      throw new UnauthorizedException('Device not found');
     }
     device.status = DeviceStatus.REVOKED;
     device.revokedAt = new Date();
@@ -173,10 +212,14 @@ export class AuthService {
     return toPublicDevice(device);
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Profile                                                            */
+  /* ------------------------------------------------------------------ */
+
   async getProfile(userId: string) {
     const user = await this.users.findOne({ where: { id: userId } });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new UnauthorizedException('User not found');
     }
     return toPublicUser(user);
   }
@@ -200,8 +243,13 @@ export class AuthService {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
 function normalizePhone(phone: string): string {
   const trimmed = phone.trim();
+  if (!trimmed) return '';
   return trimmed.startsWith('+')
     ? `+${trimmed.slice(1).replace(/\D/g, '')}`
     : trimmed.replace(/\D/g, '');
@@ -213,11 +261,24 @@ export function toPublicUser(user: User) {
     phone: user.phone,
     handle: user.handle,
     name: user.name,
+    email: user.email,
+    dateOfBirth: user.dateOfBirth,
     kycTier: user.kycTier,
     status: user.status,
     role: user.role,
     createdAt: user.createdAt,
   };
+}
+
+function splitFullName(fullName: string): { firstName: string; lastName: string } {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return { firstName: 'Vireo', lastName: 'Customer' };
+  }
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: parts[0] };
+  }
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
 }
 
 function toPublicDevice(device: Device) {

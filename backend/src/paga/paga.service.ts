@@ -10,6 +10,10 @@ import {
   PagaTransferResult,
   PaymentRequestInput,
   PaymentRequestResult,
+  RegisterCustomerIdentificationInput,
+  RegisterCustomerIdentificationResult,
+  RegisterCustomerInput,
+  RegisterCustomerResult,
   ValidateBankAccountInput,
   ValidateBankAccountResult,
   VirtualAccountResult,
@@ -220,6 +224,96 @@ export class PagaService {
       paymentMethods: Array.isArray(raw.paymentMethods) ? raw.paymentMethods : [],
       raw,
     };
+  }
+
+  async registerCustomer(input: RegisterCustomerInput): Promise<RegisterCustomerResult> {
+    const email = input.customerEmail ?? '';
+    const dob = input.customerDateOfBirth ?? '';
+    try {
+      const raw = await this.business(
+        'registerCustomer',
+        {
+          referenceNumber: input.referenceNumber,
+          customerFirstName: input.customerFirstName,
+          customerLastName: input.customerLastName,
+          customerPhoneNumber: input.customerPhoneNumber,
+          customerEmail: email || undefined,
+          customerDateOfBirth: dob || undefined,
+        },
+        [
+          input.referenceNumber,
+          input.customerFirstName,
+          input.customerLastName,
+          input.customerPhoneNumber,
+          email,
+          dob,
+        ],
+      );
+
+      return {
+        responseCode: String(raw.responseCode ?? '0'),
+        message: String(raw.message ?? 'Success'),
+        referenceNumber: String(raw.referenceNumber ?? input.referenceNumber),
+        raw,
+      };
+    } catch (error) {
+      if (error instanceof PagaApiError) {
+        this.logger.warn(`Paga registerCustomer reported: ${error.message}`);
+        return {
+          responseCode: String(error.raw.responseCode ?? '1'),
+          message: error.message,
+          referenceNumber: input.referenceNumber,
+          raw: error.raw,
+        };
+      }
+      throw error;
+    }
+  }
+
+  async registerCustomerIdentification(
+    input: RegisterCustomerIdentificationInput,
+  ): Promise<RegisterCustomerIdentificationResult> {
+    const idNumber = input.customerIdNumber ?? '';
+    const expiry = input.customerIdExpirationDate ?? '';
+
+    try {
+      const raw = await this.business(
+        'registerCustomerIdentification',
+        {
+          referenceNumber: input.referenceNumber,
+          customerPhoneNumber: input.customerPhoneNumber,
+          customerIdType: input.customerIdType,
+          customerIdNumber: idNumber || undefined,
+          customerIdExpirationDate: expiry || undefined,
+          ...(input.customerIdPhoto ? { customerIdPhoto: input.customerIdPhoto } : {}),
+        },
+        [
+          input.referenceNumber,
+          input.customerPhoneNumber,
+          input.customerIdType,
+          idNumber,
+          expiry,
+        ],
+      );
+
+      return {
+        responseCode: String(raw.responseCode ?? '0'),
+        message: String(raw.message ?? 'Success'),
+        referenceNumber: String(raw.referenceNumber ?? input.referenceNumber),
+        raw,
+      };
+    } catch (error) {
+      if (error instanceof PagaApiError) {
+        this.logger.warn(`Paga registerCustomerIdentification reported: ${error.message}`);
+        return {
+          responseCode: String(error.raw.responseCode ?? '1'),
+          message: error.message,
+          referenceNumber: input.referenceNumber,
+          raw: error.raw,
+        };
+      }
+      throw error;
+    }
   }
 
   async resolveBankUuid(bankCode: string): Promise<string> {
