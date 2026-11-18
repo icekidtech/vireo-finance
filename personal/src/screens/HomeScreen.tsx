@@ -10,6 +10,7 @@ import { errorMessage, formatMoney, formatRelative } from '../lib/format';
 import { canCopy, copyText } from '../lib/clipboard';
 import type { RootStackParamList, TabParamList } from '../navigation';
 import { Avatar, BigMoney, Button, Card, Empty, ErrorBanner, ListRow, Loading, NoticeBanner, Screen, SectionTitle } from '../components/ui';
+import BalanceCard from '../components/BalanceCard';
 import InboxBanner from '../components/InboxBanner';
 import { colors, spacing, type } from '../theme';
 
@@ -122,16 +123,19 @@ export default function HomeScreen({ navigation }: Props) {
 
       {account && (
         <>
-          <Card tone="black" style={{ paddingVertical: spacing.xxl }}>
-            <Text style={styles.cardLabel}>Cash balance</Text>
-            <BigMoney amount={account.available} color={colors.white} />
-            {Number(account.held) - Number(account.restricted) > 0 && (
-              <Text style={styles.held}>{formatMoney((Number(account.held) - Number(account.restricted)).toFixed(2))} on hold</Text>
-            )}
-            {Number(account.restricted) > 0 && (
-              <Text style={styles.held}>{formatMoney(account.restricted)} restricted until you verify more</Text>
-            )}
-          </Card>
+          <BalanceCard
+            amount={formatMoney(account.available)}
+            title="Vireo Wallet"
+            subtitle={user?.name ?? 'Personal account'}
+            notes={[
+              ...(Number(account.held) - Number(account.restricted) > 0
+                ? [`${formatMoney((Number(account.held) - Number(account.restricted)).toFixed(2))} on hold`]
+                : []),
+              ...(Number(account.restricted) > 0
+                ? [`${formatMoney(account.restricted)} restricted until you verify more`]
+                : []),
+            ]}
+          />
 
           <View style={styles.actions}>
             <Button title="Pay" variant="accent" style={{ flex: 1 }} onPress={() => navigation.navigate('Pay')} />
@@ -146,7 +150,7 @@ export default function HomeScreen({ navigation }: Props) {
             onCreated={refresh}
           />
 
-          {kyc && kyc.kycTier < 3 && (
+          {kyc && kyc.kycTier === 0 && (
             <Button title="Verify identity" variant="secondary" onPress={() => navigation.navigate('Kyc')} />
           )}
 

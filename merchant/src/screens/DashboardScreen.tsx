@@ -22,6 +22,7 @@ import {
   Empty,
   FitText,
 } from '../components/ui';
+import BalanceCard from '../components/BalanceCard';
 import InboxBanner from '../components/InboxBanner';
 import { colors, spacing, type } from '../theme';
 
@@ -80,15 +81,12 @@ export default function DashboardScreen({ navigation }: Props) {
 
       {data && (
         <>
-          <Card tone="black" style={styles.balanceCard}>
-            <Text style={styles.balanceLabel}>Balance</Text>
-            <BigMoney amount={data.balance.available} color={colors.white} />
-            {data.balance.held !== '0.00' && (
-              <Text style={styles.held}>
-                {formatMoney(data.balance.held)} on hold for payouts
-              </Text>
-            )}
-          </Card>
+          <BalanceCard
+            amount={formatMoney(data.balance.available)}
+            title="Vireo Business"
+            subtitle={merchant?.businessName ?? 'Business account'}
+            notes={data.balance.held !== '0.00' ? [`${formatMoney(data.balance.held)} on hold for payouts`] : []}
+          />
 
           <View style={styles.actions}>
             <Button
