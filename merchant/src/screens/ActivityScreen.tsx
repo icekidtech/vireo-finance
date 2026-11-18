@@ -6,7 +6,9 @@ import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
 import { useLoad } from '../lib/useLoad';
 import { formatMoney, formatRelative } from '../lib/format';
+import type { ActivityItem } from '../types';
 import type { RootStackParamList, TabParamList } from '../navigation';
+import TransactionSheet from '../components/TransactionSheet';
 import {
   Avatar,
   Empty,
@@ -28,6 +30,7 @@ type Props = CompositeScreenProps<
 type Tab = 'all' | 'sales' | 'payouts';
 
 export default function ActivityScreen({ navigation, route }: Props) {
+  const [selected, setSelected] = useState<ActivityItem | null>(null);
   const [tab, setTab] = useState<Tab>(route.params?.initialTab ?? 'all');
   const money = useLoad(() => api.getMerchantActivity(100), 'Could not load activity');
   const orders = useLoad(() => api.listOrders(), 'Could not load sales');
@@ -61,6 +64,7 @@ export default function ActivityScreen({ navigation, route }: Props) {
               title={item.counterparty}
               subtitle={formatRelative(item.createdAt)}
               trailing={`${item.direction === 'in' ? '+' : '−'}${formatMoney(item.amount, item.currency)}`}
+              onPress={() => setSelected(item)}
             />
           ))
         ) : (
@@ -96,6 +100,7 @@ export default function ActivityScreen({ navigation, route }: Props) {
       ) : (
         <Empty title="No payouts yet" body="Cash outs to your bank account will appear here." />
       )}
+      <TransactionSheet item={selected} onClose={() => setSelected(null)} />
     </Screen>
   );
 }

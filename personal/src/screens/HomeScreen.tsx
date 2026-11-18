@@ -8,10 +8,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLoad } from '../lib/useLoad';
 import { errorMessage, formatMoney, formatRelative } from '../lib/format';
 import { canCopy, copyText } from '../lib/clipboard';
+import type { ActivityItem } from '../types';
 import type { RootStackParamList, TabParamList } from '../navigation';
 import { Avatar, BigMoney, Button, Card, Empty, ErrorBanner, ListRow, Loading, NoticeBanner, Screen, SectionTitle } from '../components/ui';
 import AccountCard from '../components/AccountCard';
 import BalanceCard from '../components/BalanceCard';
+import TransactionSheet from '../components/TransactionSheet';
 import InboxBanner from '../components/InboxBanner';
 import { colors, spacing, type } from '../theme';
 
@@ -77,6 +79,7 @@ function AddMoneyCard({
 
 export default function HomeScreen({ navigation }: Props) {
   const { user } = useAuth();
+  const [selected, setSelected] = useState<ActivityItem | null>(null);
   const { data, loading, refreshing, error, refresh } = useLoad(async () => {
     const [account, activity, kyc] = await Promise.all([
       api.getMyAccount(),
@@ -163,12 +166,13 @@ export default function HomeScreen({ navigation }: Props) {
                     {formatMoney(item.amount, item.currency)}
                   </Text>
                 }
-                onPress={item.transferId ? () => navigation.navigate('TransferDetail', { transferId: item.transferId! }) : undefined}
+                onPress={() => setSelected(item)}
               />
             ))
           )}
         </>
       )}
+      <TransactionSheet item={selected} onClose={() => setSelected(null)} loadTransfer={(id) => api.getTransfer(id)} />
     </Screen>
   );
 }

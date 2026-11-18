@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -6,6 +7,7 @@ import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { useLoad } from '../lib/useLoad';
 import { formatMoney, formatRelative } from '../lib/format';
+import type { ActivityItem } from '../types';
 import type { RootStackParamList, TabParamList } from '../navigation';
 import {
   Avatar,
@@ -23,6 +25,7 @@ import {
   FitText,
 } from '../components/ui';
 import BalanceCard from '../components/BalanceCard';
+import TransactionSheet from '../components/TransactionSheet';
 import InboxBanner from '../components/InboxBanner';
 import { colors, spacing, type } from '../theme';
 
@@ -33,6 +36,7 @@ type Props = CompositeScreenProps<
 
 export default function DashboardScreen({ navigation }: Props) {
   const { user } = useAuth();
+  const [selected, setSelected] = useState<ActivityItem | null>(null);
   const { data, loading, refreshing, error, refresh } = useLoad(
     async () => {
       const [dashboard, activity] = await Promise.all([api.getDashboard(), api.getMerchantActivity(5)]);
@@ -147,11 +151,13 @@ export default function DashboardScreen({ navigation }: Props) {
                 title={item.counterparty}
                 subtitle={formatRelative(item.createdAt)}
                 trailing={`${item.direction === 'in' ? '+' : '−'}${formatMoney(item.amount, item.currency)}`}
+                onPress={() => setSelected(item)}
               />
             ))
           )}
         </>
       )}
+      <TransactionSheet item={selected} onClose={() => setSelected(null)} />
     </Screen>
   );
 }

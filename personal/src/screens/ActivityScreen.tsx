@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Text, StyleSheet } from 'react-native';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -5,7 +6,9 @@ import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
 import { useLoad } from '../lib/useLoad';
 import { formatMoney, formatRelative } from '../lib/format';
+import type { ActivityItem } from '../types';
 import type { RootStackParamList, TabParamList } from '../navigation';
+import TransactionSheet, { activityLabel } from '../components/TransactionSheet';
 import { Avatar, Empty, ErrorBanner, ListRow, Loading, Screen, SectionTitle, StatusPill } from '../components/ui';
 import { colors, spacing, type } from '../theme';
 
@@ -15,6 +18,7 @@ type Props = CompositeScreenProps<
 >;
 
 export default function ActivityScreen({ navigation }: Props) {
+  const [selected, setSelected] = useState<ActivityItem | null>(null);
   const { data, loading, refreshing, error, refresh } = useLoad(async () => {
     const [activity, transfers] = await Promise.all([api.getActivity(100), api.listTransfers(50)]);
     return { activity, inFlight: transfers.filter((t) => t.status === 'pending' || t.status === 'failed') };
@@ -51,37 +55,24 @@ export default function ActivityScreen({ navigation }: Props) {
             key={item.id}
             leading={<Avatar label={item.counterparty} tone={item.direction === 'in' ? 'accent' : 'surface'} />}
             title={item.counterparty}
-            subtitle={`${formatRelative(item.createdAt)} · ${labelFor(item.type)}`}
+            subtitle={`${formatRelative(item.createdAt)} · ${activityLabel(item.type)}`}
             trailing={
               <Text style={[styles.amount, item.direction === 'in' && { color: colors.accentDark }]}>
                 {item.direction === 'in' ? '+' : '−'}
                 {formatMoney(item.amount, item.currency)}
               </Text>
             }
-            onPress={item.transferId ? () => navigation.navigate('TransferDetail', { transferId: item.transferId! }) : undefined}
+            onPress={() => setSelected(item)}
           />
         ))
       ) : (
         <Empty title="Nothing here yet" body="Payments you send and receive will show up here." />
       )}
+      <TransactionSheet item={selected} onClose={() => setSelected(null)} loadTransfer={(id) => api.getTransfer(id)} />
     </Screen>
   );
 }
 
-function labelFor(type: string): string {
-  switch (type) {
-    case 'internal_transfer':
-      return 'Transfer';
-    case 'bank_transfer':
-      return 'Bank transfer';
-    case 'merchant_payment':
-      return 'Merchant';
-    case 'inbound_credit':
-      return 'Deposit';
-    default:
-      return type.replace(/_/g, ' ');
-  }
-}
 
 const styles = StyleSheet.create({
   title: { ...type.title, color: colors.text, marginTop: spacing.md, marginBottom: spacing.sm },
