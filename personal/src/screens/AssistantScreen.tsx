@@ -9,7 +9,7 @@ import { showAlert } from '../lib/dialog';
 import PinPad from '../components/PinPad';
 import { errorMessage, formatMoney } from '../lib/format';
 import type { ChatCard, ChatDraft } from '../types';
-import AccountCard from '../components/AccountCard';
+import GlassCard from '../components/GlassCard';
 import { canCopy, copyText } from '../lib/clipboard';
 import type { RootStackParamList } from '../navigation';
 import { Button } from '../components/ui';
@@ -18,6 +18,19 @@ import { useAuth } from '../contexts/AuthContext';
 import { colors, radius, spacing, type } from '../theme';
 
 type Props = StackScreenProps<RootStackParamList, 'Assistant'>;
+
+/** The chat shows plain text, so markdown emphasis/headings/bullets from the model are cleaned up. */
+function plainText(s: string): string {
+  return s
+    .replace(/\*\*(.+?)\*\*/gs, '$1')
+    .replace(/__(.+?)__/gs, '$1')
+    .replace(/(^|\s)\*(\S[^*\n]*?)\*(?=\s|[.,!?]|$)/g, '$1$2')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*]\s+/gm, '• ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
 
 type Item =
   | { id: string; kind: 'user' | 'assistant'; text: string }
@@ -33,9 +46,9 @@ type Item =
 function DepositCard({ card }: { card: ChatCard }) {
   const [copied, setCopied] = useState(false);
   return (
-    <AccountCard
+    <GlassCard
       label="Your account number"
-      number={card.accountNumber}
+      value={card.accountNumber}
       leftLabel="Bank"
       leftValue={card.bankName}
       rightLabel="Account name"
@@ -238,7 +251,7 @@ export default function AssistantScreen({ navigation }: Props) {
                 </View>
               ) : (
                 <View style={styles.botBubble}>
-                  <Text style={styles.botText}>{item.text}</Text>
+                  <Text style={styles.botText}>{plainText(item.text)}</Text>
                 </View>
               )
             }
