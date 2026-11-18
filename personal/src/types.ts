@@ -188,3 +188,12 @@ export interface AdminMerchant {
   status: string;
   createdAt: string;
 }
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  body: string;
+  data: Record<string, unknown> | null;
+  read: boolean;
+  createdAt: string;
+}

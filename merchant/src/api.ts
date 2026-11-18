@@ -214,13 +214,14 @@ export class VireoApi {
 
   async listUnreadNotifications() {
     const { data } = await this.client.get<AppNotification[]>('/notifications', {
-      params: { unread: 'true', limit: 5 },
+      params: { unread: 'true', limit: 5, scope: 'merchant' },
     });
     return data;
   }
 
   async markNotificationsRead(ids?: string[]) {
-    await this.client.post('/notifications/read', ids ? { ids } : {});
+    // Only this app's own notifications: the same login may also have a personal wallet.
+    await this.client.post('/notifications/read', ids ? { ids } : { scope: 'merchant' });
   }
 
   async listBanks() {

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AccountsModule } from '../accounts/accounts.module';
 import { VirtualAccount } from '../accounts/virtual-account.entity';
 import { LedgerModule } from '../ledger/ledger.module';
 import { MerchantModule } from '../merchant/merchant.module';
@@ -14,6 +15,7 @@ import { WebhooksService } from './webhooks.service';
   imports: [
     TypeOrmModule.forFeature([PagaEvent, VirtualAccount]),
     LedgerModule,
+    AccountsModule,
     PagaModule,
     NotificationsModule,
     TransfersModule,

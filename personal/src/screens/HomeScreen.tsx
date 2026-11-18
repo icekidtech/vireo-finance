@@ -10,6 +10,7 @@ import { errorMessage, formatMoney, formatRelative } from '../lib/format';
 import { canCopy, copyText } from '../lib/clipboard';
 import type { RootStackParamList, TabParamList } from '../navigation';
 import { Avatar, BigMoney, Button, Card, Empty, ErrorBanner, ListRow, Loading, NoticeBanner, Screen, SectionTitle } from '../components/ui';
+import InboxBanner from '../components/InboxBanner';
 import { colors, spacing, type } from '../theme';
 
 type Props = CompositeScreenProps<
@@ -106,6 +107,7 @@ export default function HomeScreen({ navigation }: Props) {
         <Avatar label={user?.name ?? '?'} tone="black" />
       </View>
       <ErrorBanner message={error} />
+      <InboxBanner onNew={refresh} />
       {kyc && kyc.kycTier === 0 && (
         <NoticeBanner
           message={

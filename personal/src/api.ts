@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import type { PickedFile } from './lib/documents';
 import type {
   ActivityItem,
+  AppNotification,
   AdminMerchant,
   ChatResponse,
   KycRecord,
@@ -172,6 +173,20 @@ export class VireoApi {
       ...confirmation,
     });
     return data;
+  }
+
+  /* ── Notifications ── */
+
+  async listUnreadNotifications() {
+    const { data } = await this.client.get<AppNotification[]>('/notifications', {
+      params: { unread: 'true', limit: 5, scope: 'personal' },
+    });
+    return data;
+  }
+
+  async markNotificationsRead(ids?: string[]) {
+    // Only this app's own notifications: the same login may also own a business.
+    await this.client.post('/notifications/read', ids ? { ids } : { scope: 'personal' });
   }
 
   /* ── Transaction PIN ── */

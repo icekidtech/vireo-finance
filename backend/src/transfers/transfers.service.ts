@@ -524,7 +524,7 @@ export class TransfersService {
           { type: 'push', enabled: true },
           { type: 'in_app', enabled: true },
         ],
-        { kind: 'merchant_payment', transferId: transfer.id, orderReference },
+        { kind: 'merchant_payment', scope: 'merchant', transferId: transfer.id, orderReference },
       );
     } catch (error) {
       this.logger.warn(

@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
+import { AccountsService } from '../accounts/accounts.service';
 import { BalanceCapService } from '../risk/balance-cap.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -27,6 +28,7 @@ export class WebhooksService {
     private readonly transfers: TransfersService,
     private readonly merchants: MerchantService,
     @Optional() private readonly caps?: BalanceCapService,
+    @Optional() private readonly accounts?: AccountsService,
   ) {}
 
   async handle(headers: IncomingHeaders, rawBody: string, body: Record<string, unknown>) {
@@ -127,8 +129,13 @@ export class WebhooksService {
       });
     });
 
-    await this.notifications.creditReceived(virtualAccount.userId, amount);
-    await this.applyBalanceCap(virtualAccount.userId);
+    // The same login can own a personal wallet and a business: say which one this money is for.
+    const scope = (await this.accounts?.walletOwner(virtualAccount.accountId))
+      ? 'personal'
+      : 'merchant';
+    await this.notifications.creditReceived(virtualAccount.userId, amount, { scope });
+    // Balance caps apply to the personal wallet only.
+    if (scope === 'personal') await this.applyBalanceCap(virtualAccount.userId);
     return { credited: true };
   }
 
@@ -142,6 +149,8 @@ export class WebhooksService {
           userId,
           'Part of your balance is restricted',
           `NGN ${formatMinor(restricted)} is held until you verify more of your identity. Open Verify identity to raise your limit.`,
+          undefined,
+          { scope: 'personal' },
         );
       }
     } catch (error) {
