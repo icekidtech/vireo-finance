@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Button } from './ui';
 import { DrawLine, FadeIn, Float, Glow, Pulse, Reveal, Rise, Twinkle } from './motion';
+import Logo from './Logo';
 import { colors, radius, spacing, type } from '../theme';
 
 export interface LandingContent {
@@ -73,7 +74,7 @@ export default function Landing({ content, onPrimary, onSecondary }: Props) {
           <View style={inner}>
             <FadeIn y={-10}>
               <View style={styles.nav}>
-                <Text style={styles.logo}>vireo</Text>
+                <Logo height={34} />
                 {!compact && (
                   <View style={[styles.navPill, glassBlur]}>
                     {(
@@ -132,7 +133,7 @@ export default function Landing({ content, onPrimary, onSecondary }: Props) {
                   <View style={[styles.cardBack]} />
                   <View style={[styles.glassCard, glassBlur]}>
                     <View style={styles.cardTop}>
-                      <Text style={styles.cardLogo}>vireo</Text>
+                      <Logo height={28} />
                       <View style={styles.cardChip}>
                         <Text style={styles.cardChipText}>{content.cardLabel.toUpperCase()}</Text>
                       </View>

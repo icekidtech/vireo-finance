@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import { errorMessage } from '../lib/format';
 import { AuthLayout, Button, ErrorBanner, Field, Screen } from '../components/ui';
+import Logo from '../components/Logo';
 import PinSetup from '../components/PinSetup';
 import { colors, spacing, type } from '../theme';
 
@@ -80,7 +81,7 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
       <Screen>
 
         <View style={[styles.welcome, { minHeight: Math.max(520, height - 140) }]}>
-          <Text style={styles.logo}>vireo</Text>
+          <Logo height={64} />
           <Text style={styles.tag}>Money that responds{'\n'}to you.</Text>
           <Text style={styles.point}>• Pay people, banks and merchants</Text>
           <Text style={styles.point}>• Ask the assistant about your money</Text>

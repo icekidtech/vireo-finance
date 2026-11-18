@@ -7,6 +7,7 @@ import { api } from '../api';
 import { errorMessage } from '../lib/format';
 import { AuthLayout, Button, ErrorBanner, Field, Screen } from '../components/ui';
 import BankAccountFields, { type BankAccountValue } from '../components/BankAccountFields';
+import Logo from '../components/Logo';
 import PinSetup from '../components/PinSetup';
 import { colors, spacing, type } from '../theme';
 
@@ -107,7 +108,7 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
       <Screen>
 
         <View style={[styles.welcome, { minHeight: Math.max(520, height - 140) }]}>
-          <Text style={styles.logo}>vireo</Text>
+          <Logo height={64} />
           <Text style={styles.tag}>Get paid the way{'\n'}your customers pay.</Text>
           <Text style={styles.point}>• Show a QR, get paid instantly</Text>
           <Text style={styles.point}>• Track every sale and payout</Text>

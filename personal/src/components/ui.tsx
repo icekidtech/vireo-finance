@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radius, spacing, type } from '../theme';
 import { initials, splitMoney } from '../lib/format';
 import { FadeIn, Glow } from './motion';
+import Logo from './Logo';
 import { refreshAll } from '../lib/refreshBus';
 
 /* ───────────── Layout ───────────── */
@@ -198,7 +199,7 @@ export function AuthLayout({ children, onBack }: { children: ReactNode; onBack?:
           ) : (
             <View />
           )}
-          <Text style={styles.authLogo}>vireo</Text>
+          <Logo height={30} />
           <View style={{ width: 24 }} />
         </View>
         {children}

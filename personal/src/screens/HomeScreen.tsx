@@ -10,6 +10,7 @@ import { errorMessage, formatMoney, formatRelative } from '../lib/format';
 import { canCopy, copyText } from '../lib/clipboard';
 import type { RootStackParamList, TabParamList } from '../navigation';
 import { Avatar, BigMoney, Button, Card, Empty, ErrorBanner, ListRow, Loading, NoticeBanner, Screen, SectionTitle } from '../components/ui';
+import AccountCard from '../components/AccountCard';
 import BalanceCard from '../components/BalanceCard';
 import InboxBanner from '../components/InboxBanner';
 import { colors, spacing, type } from '../theme';
@@ -48,37 +49,29 @@ function AddMoneyCard({
 
   if (!account) {
     return (
-      <Card>
-        <Text style={styles.cardLabelDark}>ADD MONEY</Text>
-        <Text style={styles.held2}>Get your own account number, then transfer to it from any bank.</Text>
+      <View>
+        <AccountCard label="Add money" number={null} emptyText="No account number yet" buttonTitle="Get account number" busy={busy} onPress={create} />
         <ErrorBanner message={error} />
-        <Button title="Get my account number" variant="accent" loading={busy} onPress={create} style={{ marginTop: spacing.md }} />
-      </Card>
+        <Text style={styles.held2}>Get your own account number, then transfer to it from any bank.</Text>
+      </View>
     );
   }
   return (
-    <Card>
-      <Text style={styles.cardLabelDark}>ADD MONEY · YOUR ACCOUNT NUMBER</Text>
-      <Text style={styles.acct} selectable>
-        {account.accountNumber}
-      </Text>
-      <Text style={styles.held2}>
-        {account.bankName} · {accountName}
-      </Text>
-      <Text style={styles.held2}>Transfer from any bank. It lands in your wallet.</Text>
-      <Button
-        title={copied ? 'Copied' : canCopy ? 'Copy account number' : 'Share account number'}
-        variant="secondary"
-        small
-        style={{ alignSelf: 'flex-start', marginTop: spacing.md }}
-        onPress={async () => {
-          if (await copyText(account.accountNumber)) {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          }
-        }}
-      />
-    </Card>
+    <AccountCard
+      label="Account number"
+      number={account.accountNumber}
+      leftLabel="Bank"
+      leftValue={account.bankName}
+      rightLabel="Account name"
+      rightValue={accountName}
+      buttonTitle={copied ? 'Copied' : canCopy ? 'Copy' : 'Share'}
+      onPress={async () => {
+        if (await copyText(account.accountNumber)) {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }
+      }}
+    />
   );
 }
 

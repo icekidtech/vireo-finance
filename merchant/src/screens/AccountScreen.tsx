@@ -6,6 +6,7 @@ import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { useLoad } from '../lib/useLoad';
 import type { RootStackParamList, TabParamList } from '../navigation';
+import AccountCard from '../components/AccountCard';
 import { Avatar, Button, Card, ErrorBanner, ListRow, Loading, Screen, SectionTitle, StatusPill } from '../components/ui';
 import { colors, spacing, type } from '../theme';
 import { showAlert } from '../lib/dialog';
@@ -46,11 +47,15 @@ export default function AccountScreen({ navigation }: Props) {
       )}
 
       <SectionTitle>Settlement bank</SectionTitle>
-      <Button title="Edit business & bank" variant="secondary" small onPress={() => navigation.navigate('EditBusiness')} style={{ alignSelf: 'flex-start', marginBottom: spacing.md }} />
-      <Card>
-        <ListRow title="Account name" trailing={merchant?.settlementAccountName ?? '—'} />
-        <ListRow title="Account number" trailing={merchant?.settlementAccountNumber ?? '—'} />
-      </Card>
+      <AccountCard
+        label="Payout account"
+        number={merchant?.settlementAccountNumber ?? null}
+        emptyText="No payout account yet"
+        leftLabel="Account name"
+        leftValue={merchant?.settlementAccountName ?? '—'}
+        buttonTitle={merchant?.settlementAccountNumber ? 'Edit' : 'Add bank'}
+        onPress={() => navigation.navigate('EditBusiness')}
+      />
 
       <SectionTitle>You</SectionTitle>
       <Card>

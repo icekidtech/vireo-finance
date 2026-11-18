@@ -5,6 +5,7 @@ import { api } from '../api';
 import { canCopy, copyText } from '../lib/clipboard';
 import { useLoad } from '../lib/useLoad';
 import type { RootStackParamList } from '../navigation';
+import AccountCard from '../components/AccountCard';
 import InboxBanner from '../components/InboxBanner';
 import { Button, Card, ErrorBanner, Header, Loading, NoticeBanner, Screen } from '../components/ui';
 import { colors, spacing, type } from '../theme';
@@ -39,22 +40,16 @@ export default function ReceiveScreen({ navigation }: Props) {
       {loading && !data ? (
         <Loading />
       ) : data ? (
-        <Card>
-          <Text style={styles.label}>BANK</Text>
-          <Text style={styles.value}>{data.bankName}</Text>
-          <Text style={styles.label}>ACCOUNT NUMBER</Text>
-          <Text style={[styles.value, styles.number]} selectable>
-            {data.accountNumber}
-          </Text>
-          <Text style={styles.label}>ACCOUNT NAME</Text>
-          <Text style={styles.value}>{data.accountName}</Text>
-          <Button
-            title={copied ? 'Copied' : canCopy ? 'Copy account number' : 'Share account number'}
-            variant="secondary"
-            onPress={copy}
-            style={{ marginTop: spacing.md }}
-          />
-        </Card>
+        <AccountCard
+          label="Account number"
+          number={data.accountNumber}
+          leftLabel="Bank"
+          leftValue={data.bankName}
+          rightLabel="Account name"
+          rightValue={data.accountName}
+          buttonTitle={copied ? 'Copied' : canCopy ? 'Copy' : 'Share'}
+          onPress={copy}
+        />
       ) : (
         <View>
           <ErrorBanner message={error} />
