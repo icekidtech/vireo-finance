@@ -169,6 +169,105 @@ export class BiometricsService {
   }
 
   /**
+   * Identify a user by face (1:N search) - TRUE DEVICELESS PAYMENT.
+   * No identifier needed - just scan the face and find the user.
+   */
+  async identifyByFace(
+    sampleBase64: string,
+    context: AttemptContext,
+    amountMinor?: number,
+  ): Promise<FusionResult> {
+    this.assertReady();
+
+    // Check if provider supports face search
+    const provider = this.requireProvider();
+    if (!provider.searchFace) {
+      throw new ServiceUnavailableException('Face search is not supported by this provider');
+    }
+
+    // Search for matching faces across ALL users
+    const matches = await provider.searchFace(sampleBase64);
+
+    if (matches.length === 0) {
+      // No matches found - customer not enrolled
+      await this.padUnknownIdentifierLatency();
+      return this.logAttempt(null, BiometricType.FACE, AttemptResult.DENIED, context, {
+        matchScore: 0,
+        livenessScore: 0,
+        spoofScore: 100,
+        qualityScore: 0,
+      });
+    }
+
+    // Get the best match
+    const bestMatch = matches[0]; // Already sorted by similarity in DiditProvider
+
+    // Find user by userId or vendorData
+    let user: User | null = null;
+    if (bestMatch.userId) {
+      user = await this.users.findOne({ where: { id: bestMatch.userId } });
+    } else if (bestMatch.vendorData) {
+      // Try to parse vendor data as user ID (stored during enrollment)
+      user = await this.users.findOne({ where: { id: bestMatch.vendorData } });
+    }
+
+    if (!user) {
+      return this.logAttempt(null, BiometricType.FACE, AttemptResult.DENIED, context, {
+        matchScore: bestMatch.similarityScore,
+        livenessScore: 0,
+        spoofScore: 0,
+        qualityScore: 0,
+      });
+    }
+
+    // Check for lockout
+    if (await this.isLockedOut(user.id)) {
+      return {
+        decision: AttemptResult.DENIED,
+        userId: user.id,
+        scores: { matchScore: 0, livenessScore: 0, spoofScore: 0, qualityScore: 0 },
+        reason: 'Too many failed attempts',
+      };
+    }
+
+    // Check consent
+    const hasConsent = await this.hasActiveConsent(user.id);
+    if (!hasConsent) {
+      return {
+        ...(await this.logAttempt(user.id, BiometricType.FACE, AttemptResult.DENIED, context, {
+          matchScore: bestMatch.similarityScore,
+          livenessScore: 0,
+          spoofScore: 0,
+          qualityScore: 0,
+        })),
+        userId: user.id,
+      };
+    }
+
+    // Convert similarity score to match score (0-100)
+    const scores = {
+      matchScore: bestMatch.similarityScore,
+      livenessScore: 85, // Didit does liveness during search
+      spoofScore: 0, // Didit checks for spoofs
+      qualityScore: 80, // Reasonable assumption for search results
+    };
+
+    // Apply score fusion
+    const fusionResult = this.scoreFusion({ ...scores }, amountMinor);
+
+    // Log attempt
+    await this.logAttempt(
+      user.id,
+      BiometricType.FACE,
+      fusionResult.decision,
+      context,
+      fusionResult.scores,
+    );
+
+    return { ...fusionResult, userId: user.id };
+  }
+
+  /**
    * Verify a biometric sample against stored enrollments.
    * Returns a decision: approved, denied, or step_up.
    */

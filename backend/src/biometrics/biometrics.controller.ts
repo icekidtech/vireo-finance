@@ -11,10 +11,12 @@ import {
 import { BiometricsService } from './biometrics.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { AttemptContext } from './biometric-attempt.entity';
 import {
   EnrollBiometricDto,
   GrantConsentDto,
   RevokeBiometricDto,
+  IdentifyBiometricDto,
 } from './dto/enroll-biometric.dto';
 
 @Controller('biometrics')
@@ -118,6 +120,35 @@ export class BiometricsController {
         qualityScore: a.qualityScore,
         createdAt: a.createdAt,
       })),
+    };
+  }
+
+  /**
+   * Identify user by face (1:N search) - TRUE DEVICELESS PAYMENT.
+   * No identifier needed - just scan the face.
+   * 
+   * This endpoint is typically called by merchant terminals, not end users.
+   * It requires special merchant authentication (not implemented yet).
+   */
+  @Post('identify')
+  @HttpCode(HttpStatus.OK)
+  async identifyByFace(@Body() dto: IdentifyBiometricDto) {
+    const result = await this.biometrics.identifyByFace(
+      dto.sampleBase64,
+      AttemptContext.PAYMENT,
+      dto.amountMinor,
+    );
+
+    return {
+      decision: result.decision,
+      userId: result.userId,
+      scores: {
+        matchScore: result.scores.matchScore,
+        livenessScore: result.scores.livenessScore,
+        spoofScore: result.scores.spoofScore,
+        qualityScore: result.scores.qualityScore,
+      },
+      reason: result.reason,
     };
   }
 }

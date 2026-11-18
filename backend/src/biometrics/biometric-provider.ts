@@ -20,6 +20,17 @@ export interface ProviderVerification {
   matchedTemplateIndex?: number;
 }
 
+export interface FaceSearchResult {
+  userId?: string;
+  vendorData?: string;
+  similarityScore: number;
+  userDetails?: {
+    fullName?: string;
+    documentType?: string;
+    documentNumber?: string;
+  };
+}
+
 /**
  * Contract a real biometric vendor adapter must satisfy. Implementations must
  * perform genuine liveness / presentation-attack detection and matching, and
@@ -33,4 +44,9 @@ export interface BiometricProvider {
     sampleBase64: string,
     templates: string[],
   ): Promise<ProviderVerification>;
+  /**
+   * Search for a face across all enrolled users (1:N identification).
+   * Optional - not all providers support this.
+   */
+  searchFace?(sampleBase64: string): Promise<FaceSearchResult[]>;
 }
