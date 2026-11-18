@@ -82,7 +82,7 @@ export default function VerifyScreen({ navigation }: Props) {
       setSelfie(null);
       // After BVN verification, provision the merchant deposit account (Paga sub-account)
       try {
-        await api.getMerchantDepositAccount();
+        await api.getDepositAccount();
       } catch (e) {
         // If it fails, it's not critical - user can get it later from ReceiveScreen
         console.warn('Could not provision deposit account:', e);

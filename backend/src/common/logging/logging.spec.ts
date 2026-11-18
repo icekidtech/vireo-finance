@@ -3,6 +3,36 @@ import { Logger } from '@nestjs/common';
 import { httpLogger } from './http-logger.middleware';
 import { redactForLog, redactUrl } from './redact';
 
+describe('redactForLog (identity data)', () => {
+  it('never lets BVNs, NINs, selfies, PINs, birth dates or account numbers reach a log', () => {
+    const out = redactForLog({
+      bvn: '22652863774',
+      nin: '10987654321',
+      selfie: 'data:image/png;base64,AAAA',
+      pin: '4827',
+      currentPin: '1111',
+      dateOfBirth: '2003-12-16',
+      address: '12 Allen Avenue',
+      accountNumber: '0123456789',
+      firstName: 'Ada',
+    }) as Record<string, unknown>;
+    const text = JSON.stringify(out);
+    for (const secret of [
+      '22652863774',
+      '10987654321',
+      'AAAA',
+      '4827',
+      '1111',
+      '2003-12-16',
+      'Allen',
+      '0123456789',
+    ]) {
+      expect(text).not.toContain(secret);
+    }
+    expect(out.firstName).toBe('Ada');
+  });
+});
+
 describe('redactForLog', () => {
   it('replaces sensitive keys at any depth', () => {
     const out = redactForLog({

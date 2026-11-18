@@ -1,9 +1,10 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { formatMinor } from '../database/money';
 import { LedgerService } from '../ledger/ledger.service';
 import { AccountsService } from './accounts.service';
+import { UserDepositService } from './user-deposit.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller('accounts')
@@ -11,7 +12,15 @@ export class AccountsController {
   constructor(
     private readonly accounts: AccountsService,
     private readonly ledger: LedgerService,
+    private readonly deposits: UserDepositService,
   ) {}
+
+  /** The account number to pay into, created now if signup could not create it. */
+  @Post('me/deposit-account')
+  @HttpCode(200)
+  depositAccount(@CurrentUser() user: AuthenticatedUser) {
+    return this.deposits.getOrCreate(user.userId);
+  }
 
   @Get('me')
   async me(@CurrentUser() user: AuthenticatedUser) {

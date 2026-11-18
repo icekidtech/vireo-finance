@@ -25,8 +25,7 @@ import { IDENTITY_VERIFIER, IdentityVerifier } from '../kyc/identity-verifier';
 import { businessNameSimilarity, nameMatches } from '../kyc/names';
 import { Merchant } from './merchant.entity';
 
-export type VerificationReason =
-  'verified' | 'rejected' | 'identity_required';
+export type VerificationReason = 'verified' | 'rejected' | 'identity_required';
 
 export interface VerificationOutcome {
   kybStatus: string;
@@ -180,9 +179,7 @@ export class MerchantVerificationService {
     // Payout account verification happens separately when they want to cash out.
     merchant.kybStatus = 'verified';
     await this.merchants.save(merchant);
-    this.logger.log(
-      `Merchant ${merchant.id} verified automatically (owner BVN verified)`,
-    );
+    this.logger.log(`Merchant ${merchant.id} verified automatically (owner BVN verified)`);
     return { kybStatus: 'verified', reason: 'verified', kycTier: user.kycTier };
   }
 }

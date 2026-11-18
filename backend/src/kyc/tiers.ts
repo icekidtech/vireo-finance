@@ -47,9 +47,7 @@ export const BUSINESS_LEVELS: BusinessLevelDef[] = [
   {
     level: 1,
     name: 'Starter',
-    requirements: [
-      { key: 'bvn_owner', label: 'Owner identity verified with BVN' },
-    ],
+    requirements: [{ key: 'bvn_owner', label: 'Owner identity verified with BVN' }],
   },
   {
     level: 2,

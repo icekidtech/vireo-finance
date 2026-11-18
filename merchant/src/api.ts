@@ -210,12 +210,6 @@ export class VireoApi {
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
-  /** Re-checks whether the business now qualifies for automatic verification. */
-  async checkMerchantVerification() {
-    const { data } = await this.client.post<VerificationOutcome>('/merchants/me/verification');
-    return data;
-  }
-
   /* ── Notifications ── */
 
   async listUnreadNotifications() {
@@ -240,12 +234,6 @@ export class VireoApi {
       '/transfers/bank-lookup',
       payload,
     );
-    return data;
-  }
-
-  /** Bank details must be sent as a complete set; the API rejects partial sets. */
-  async updateMerchant(input: UpdateMerchantInput) {
-    const { data } = await this.client.patch<Merchant>('/merchants/me', input);
     return data;
   }
 

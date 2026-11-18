@@ -205,6 +205,14 @@ export class VireoApi {
     return data;
   }
 
+  /** The account number to pay into. Created now if signup could not create it. */
+  async getDepositAccount() {
+    const { data } = await this.client.post<{ bankName: string; accountNumber: string; accountName: string }>(
+      '/accounts/me/deposit-account',
+    );
+    return data;
+  }
+
   async getKycTiers() {
     const { data } = await this.client.get<KycTiers>('/kyc/tiers');
     return data;

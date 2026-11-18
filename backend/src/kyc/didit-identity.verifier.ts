@@ -3,7 +3,7 @@ import { DiditClient, DiditClientConfig, imageBlob } from '../common/didit.clien
 import { CompanyCandidate, IdDocumentResult, IdentityVerifier } from './identity-verifier';
 
 interface DatabaseValidationResponse {
-  database_validation?: { validations?: unknown };
+  database_validation?: { validations?: unknown; services_used?: unknown };
 }
 interface LivenessResponse {
   liveness?: { status?: string; warnings?: { risk?: string }[] };
@@ -48,12 +48,6 @@ export class DiditIdentityVerifier implements IdentityVerifier {
     body.append('user_image', imageBlob(selfie), 'selfie.jpg');
     body.append('save_api_request', 'false');
     const res = await this.client.postForm<LivenessResponse>('passive-liveness', body);
-    
-    // DEBUG: Log liveness response
-    console.log('=== DIDIT LIVENESS RESPONSE ===');
-    console.log('Full response:', JSON.stringify(res, null, 2));
-    console.log('================================');
-    
     const l = res.liveness;
     if (!l || typeof l.status !== 'string') {
       throw new ServiceUnavailableException('Identity verification is not available right now');
@@ -84,6 +78,7 @@ export class DiditIdentityVerifier implements IdentityVerifier {
     return this.matched(
       await this.client.postForm<DatabaseValidationResponse>('database-validation', body),
       'nga_bank_verification_number',
+      ['identification_number', 'full_name', 'date_of_birth'],
     );
   }
 
@@ -103,52 +98,39 @@ export class DiditIdentityVerifier implements IdentityVerifier {
     return this.matched(
       await this.client.postForm<DatabaseValidationResponse>('database-validation', body),
       'nga_national_id',
+      ['identification_number', 'full_name', 'date_of_birth'],
     );
   }
 
-  /** A pass needs this service to answer MATCH (an identity, name and date of birth match). */
-  private matched(res: DatabaseValidationResponse, serviceId: string): boolean {
-    // DEBUG: Log the full response to understand what Didit is returning
-    console.log('=== DIDIT DATABASE VALIDATION RESPONSE ===');
-    console.log('Full response:', JSON.stringify(res, null, 2));
-    console.log('Service ID looking for:', serviceId);
-    
-    // NEW API FORMAT: Check if validations is an object (new format)
+  /**
+   * A pass needs EVERY compared field to be a full match. Didit's overall
+   * `match_type` is "full_match" as soon as any one field matches, so it is not
+   * used on its own. Didit answers with per-field results (an object such as
+   * { identification_number, full_name, date_of_birth }) or, in the catalogue
+   * form, a list of per-service outcome codes; both are handled.
+   */
+  private matched(
+    res: DatabaseValidationResponse,
+    serviceId: string,
+    requiredFields: string[],
+  ): boolean {
     const validation = res.database_validation;
-    if (!validation) {
-      console.log('ERROR: database_validation is missing');
+    const validations = validation?.validations;
+    if (!validation || validations === undefined || validations === null) {
       throw new ServiceUnavailableException('Identity verification is not available right now');
     }
-    
-    // Check if the requested service was used
-    const servicesUsed = (validation as any).services_used;
-    if (Array.isArray(servicesUsed) && servicesUsed.includes(serviceId)) {
-      const matchType = (validation as any).match_type;
-      console.log('Match type:', matchType);
-      console.log('Match result:', matchType === 'full_match');
-      console.log('==========================================');
-      return matchType === 'full_match';
+
+    if (Array.isArray(validations)) {
+      const result = (validations as { service_id?: string; outcome_code?: string }[]).find(
+        (v) => v.service_id === serviceId,
+      );
+      return result?.outcome_code === 'MATCH';
     }
-    
-    // OLD API FORMAT: Fall back to array-based validation
-    const validations = validation.validations;
-    console.log('Validations:', JSON.stringify(validations, null, 2));
-    
-    if (!Array.isArray(validations)) {
-      console.log('ERROR: validations is not an array (trying new format above)');
-      throw new ServiceUnavailableException('Identity verification is not available right now');
-    }
-    
-    const result = (validations as { service_id?: string; outcome_code?: string }[]).find(
-      (v) => v.service_id === serviceId,
-    );
-    
-    console.log('Found result:', JSON.stringify(result, null, 2));
-    console.log('Outcome code:', result?.outcome_code);
-    console.log('Match result:', result?.outcome_code === 'MATCH');
-    console.log('==========================================');
-    
-    return result?.outcome_code === 'MATCH';
+
+    const fields = validations as Record<string, unknown>;
+    const usedService = validation.services_used;
+    if (Array.isArray(usedService) && !usedService.includes(serviceId)) return false;
+    return requiredFields.every((f) => fields[f] === 'full_match');
   }
 
   async readIdDocument(front: Buffer, back?: Buffer): Promise<IdDocumentResult> {

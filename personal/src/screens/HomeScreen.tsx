@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -5,7 +6,8 @@ import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { useLoad } from '../lib/useLoad';
-import { formatMoney, formatRelative } from '../lib/format';
+import { errorMessage, formatMoney, formatRelative } from '../lib/format';
+import { canCopy, copyText } from '../lib/clipboard';
 import type { RootStackParamList, TabParamList } from '../navigation';
 import { Avatar, BigMoney, Button, Card, Empty, ErrorBanner, ListRow, Loading, NoticeBanner, Screen, SectionTitle } from '../components/ui';
 import { colors, spacing, type } from '../theme';
@@ -14,6 +16,69 @@ type Props = CompositeScreenProps<
   BottomTabScreenProps<TabParamList, 'Home'>,
   StackScreenProps<RootStackParamList>
 >;
+
+/** The account number people pay into to add money. Created on the spot if signup could not create it. */
+function AddMoneyCard({
+  account,
+  accountName,
+  onCreated,
+}: {
+  account: { accountNumber: string; bankName: string } | null;
+  accountName: string;
+  onCreated: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const create = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.getDepositAccount();
+      onCreated();
+    } catch (e) {
+      setError(errorMessage(e, 'Could not get your account number'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!account) {
+    return (
+      <Card>
+        <Text style={styles.cardLabelDark}>ADD MONEY</Text>
+        <Text style={styles.held2}>Get your own account number, then transfer to it from any bank.</Text>
+        <ErrorBanner message={error} />
+        <Button title="Get my account number" variant="accent" loading={busy} onPress={create} style={{ marginTop: spacing.md }} />
+      </Card>
+    );
+  }
+  return (
+    <Card>
+      <Text style={styles.cardLabelDark}>ADD MONEY · YOUR ACCOUNT NUMBER</Text>
+      <Text style={styles.acct} selectable>
+        {account.accountNumber}
+      </Text>
+      <Text style={styles.held2}>
+        {account.bankName} · {accountName}
+      </Text>
+      <Text style={styles.held2}>Transfer from any bank. It lands in your wallet.</Text>
+      <Button
+        title={copied ? 'Copied' : canCopy ? 'Copy account number' : 'Share account number'}
+        variant="secondary"
+        small
+        style={{ alignSelf: 'flex-start', marginTop: spacing.md }}
+        onPress={async () => {
+          if (await copyText(account.accountNumber)) {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }
+        }}
+      />
+    </Card>
+  );
+}
 
 export default function HomeScreen({ navigation }: Props) {
   const { user } = useAuth();
@@ -73,13 +138,11 @@ export default function HomeScreen({ navigation }: Props) {
 
           <Button title="Ask Vireo" variant="secondary" onPress={() => navigation.navigate('Assistant')} style={{ marginBottom: spacing.md }} />
 
-          {account.virtualAccount && (
-            <Card>
-              <Text style={styles.cardLabelDark}>ADD MONEY · YOUR ACCOUNT NUMBER</Text>
-              <Text style={styles.acct}>{account.virtualAccount.accountNumber}</Text>
-              <Text style={styles.held2}>{account.virtualAccount.bankName} · transfer from any bank</Text>
-            </Card>
-          )}
+          <AddMoneyCard
+            account={account.virtualAccount}
+            accountName={user?.name ?? ''}
+            onCreated={refresh}
+          />
 
           {kyc && kyc.kycTier < 3 && (
             <Button title="Verify identity" variant="secondary" onPress={() => navigation.navigate('Kyc')} />

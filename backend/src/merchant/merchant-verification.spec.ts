@@ -49,19 +49,16 @@ describe('MerchantVerificationService', () => {
     expect(merchants.save).not.toHaveBeenCalled();
   });
 
-  it('needs a payout bank account', async () => {
-    await expect(setup({ accountName: null }).service.check('u1')).resolves.toMatchObject({
-      reason: 'bank_required',
-    });
-  });
-
-  it('leaves a name mismatch pending for human review', async () => {
-    const { service, merchants } = setup({ accountName: 'ACME TRADING LTD' });
-    await expect(service.check('u1')).resolves.toMatchObject({
-      reason: 'name_mismatch',
-      kybStatus: 'pending',
-    });
-    expect(merchants.save).not.toHaveBeenCalled();
+  it('does not look at the payout account: that is checked when they cash out', async () => {
+    // Business verification is by the owner's BVN alone, whatever bank account is (or is not) set.
+    for (const accountName of [null, 'ACME TRADING LTD']) {
+      const { service, merchant } = setup({ accountName });
+      await expect(service.check('u1')).resolves.toMatchObject({
+        kybStatus: 'verified',
+        reason: 'verified',
+      });
+      expect(merchant.kybStatus).toBe('verified');
+    }
   });
 
   it('never overrides an admin rejection', async () => {

@@ -10,7 +10,12 @@ function setup(
       : opts.merchant;
   const merchants = { findOne: jest.fn(async () => merchant) };
   const users = {
-    findOne: jest.fn(async () => ({ id: 'u1', phone: '+2348012345678', kycTier: opts.tier ?? 1 })),
+    findOne: jest.fn(async () => ({
+      id: 'u1',
+      name: 'Ada Obi',
+      phone: '+2348012345678',
+      kycTier: opts.tier ?? 1,
+    })),
   };
   const accounts = {
     getVirtualAccountForAccount: jest.fn(async () => opts.existing ?? null),
@@ -41,7 +46,7 @@ describe('MerchantDepositService', () => {
       accountName: 'Ada Kitchen',
     });
     expect(paga.createVirtualAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ referenceId: 'm1', name: 'Ada Kitchen' }),
+      expect.objectContaining({ referenceId: 'm1', name: 'Ada Obi' }),
     );
     // Credited to the merchant balance account, not the owner's wallet.
     expect(accounts.createVirtualAccount.mock.calls[0][1]).toBe('acct-m1');

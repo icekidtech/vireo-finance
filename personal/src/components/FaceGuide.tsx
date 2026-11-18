@@ -15,7 +15,7 @@ type Props = {
  * between the insets, so it never runs under the title or the buttons.
  * Purely visual; sits on top of the camera preview.
  */
-export default function FaceGuide({ topInset = 170, bottomInset = 250 }: Props) {
+export default function FaceGuide({ topInset = 150, bottomInset = 230 }: Props) {
   const [box, setBox] = useState<{ w: number; h: number } | null>(null);
   const onLayout = (e: LayoutChangeEvent) =>
     setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height });
@@ -23,8 +23,9 @@ export default function FaceGuide({ topInset = 170, bottomInset = 250 }: Props) 
   let content = null;
   if (box) {
     const availH = Math.max(box.h - topInset - bottomInset, 160);
-    const w = Math.min(box.w * 0.72, 300, availH / 1.2);
-    const h = Math.min(w * 1.3, availH);
+    // Wide enough for a whole head with some margin, as in other verification apps: most of the screen width.
+    const w = Math.min(box.w * 0.86, 440, availH / 1.25);
+    const h = Math.min(w * 1.28, availH);
     const ring = 1500; // wide enough to dim the whole preview around the oval
     // Centre of the free band, relative to the middle of the screen.
     const offsetY = (topInset - bottomInset) / 2;

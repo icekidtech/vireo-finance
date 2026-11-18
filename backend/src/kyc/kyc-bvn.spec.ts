@@ -388,6 +388,85 @@ describe('DiditIdentityVerifier', () => {
     }
   });
 
+  const perField = (fields: Record<string, string>, services = ['nga_bank_verification_number']) =>
+    reply({
+      database_validation: {
+        status: 'Approved',
+        match_type: 'full_match',
+        services_used: services,
+        validations: fields,
+      },
+    });
+  const bvnInput = {
+    bvn: '12345678901',
+    firstName: 'A',
+    lastName: 'B',
+    dateOfBirth: '1990-01-01',
+    selfie: img,
+  };
+
+  it("accepts Didit's per-field answer only when every field is a full match", async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValueOnce(
+      perField({
+        identification_number: 'full_match',
+        full_name: 'full_match',
+        date_of_birth: 'full_match',
+      }),
+    );
+    await expect(v.verifyBvn(bvnInput)).resolves.toBe(true);
+    // The overall match_type says "full_match" even when only the number matched: it must not pass.
+    jest.spyOn(global, 'fetch').mockResolvedValueOnce(
+      perField({
+        identification_number: 'full_match',
+        full_name: 'no_match',
+        date_of_birth: 'full_match',
+      }),
+    );
+    await expect(v.verifyBvn(bvnInput)).resolves.toBe(false);
+    jest.spyOn(global, 'fetch').mockResolvedValueOnce(
+      perField({
+        identification_number: 'full_match',
+        full_name: 'full_match',
+        date_of_birth: 'partial_match',
+      }),
+    );
+    await expect(v.verifyBvn(bvnInput)).resolves.toBe(false);
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        perField({ identification_number: 'full_match', full_name: 'full_match' }),
+      );
+    await expect(v.verifyBvn(bvnInput)).resolves.toBe(false);
+    jest.spyOn(global, 'fetch').mockResolvedValueOnce(
+      perField(
+        {
+          identification_number: 'full_match',
+          full_name: 'full_match',
+          date_of_birth: 'full_match',
+        },
+        ['some_other_service'],
+      ),
+    );
+    await expect(v.verifyBvn(bvnInput)).resolves.toBe(false);
+  });
+
+  it('never prints Didit responses (they carry BVNs, names and birth dates)', async () => {
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    jest.spyOn(global, 'fetch').mockResolvedValueOnce(
+      perField({
+        identification_number: 'full_match',
+        full_name: 'full_match',
+        date_of_birth: 'full_match',
+      }),
+    );
+    await v.verifyBvn(bvnInput);
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(reply({ liveness: { status: 'Approved', warnings: [] } }));
+    await v.isLive(img);
+    expect(log).not.toHaveBeenCalled();
+  });
+
   it('checks the NIN through the national-id service', async () => {
     const f = jest.spyOn(global, 'fetch').mockResolvedValueOnce(dv('nga_national_id', 'MATCH'));
     await expect(

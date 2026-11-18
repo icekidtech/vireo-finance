@@ -2,6 +2,13 @@
 const SENSITIVE_KEY =
   /(code|otp|signature|password|secret|token|authorization|credential|hash|sample|embedding|template|apikey|api_key|privatekey|publickey)/i;
 
+/**
+ * Whole key names (not substrings) that carry personal or financial identifiers:
+ * identity numbers, the selfie, PINs, birth dates, addresses and account numbers.
+ */
+const SENSITIVE_EXACT_KEY =
+  /^(bvn|nin|national_?id|selfie|pin|currentpin|dateofbirth|date_of_birth|dob|address|accountnumber|account_number|cacnumber|tin)$/i;
+
 const MAX_STRING = 200;
 
 /**
@@ -23,7 +30,10 @@ export function redactForLog(value: unknown, depth = 0): unknown {
   }
   const out: Record<string, unknown> = {};
   for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
-    out[key] = SENSITIVE_KEY.test(key) ? '[redacted]' : redactForLog(v, depth + 1);
+    out[key] =
+      SENSITIVE_KEY.test(key) || SENSITIVE_EXACT_KEY.test(key)
+        ? '[redacted]'
+        : redactForLog(v, depth + 1);
   }
   return out;
 }
@@ -36,7 +46,9 @@ export function redactUrl(url: string): string {
     .split('&')
     .map((pair) => {
       const [k, v = ''] = pair.split('=');
-      return SENSITIVE_KEY.test(k) ? `${k}=[redacted]` : `${k}=${v.slice(0, 60)}`;
+      return SENSITIVE_KEY.test(k) || SENSITIVE_EXACT_KEY.test(k)
+        ? `${k}=[redacted]`
+        : `${k}=${v.slice(0, 60)}`;
     })
     .join('&');
   return `${path}?${cleaned}`;
