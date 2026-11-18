@@ -15,6 +15,7 @@ import { ReconciliationService } from './reconciliation.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Transfer, PagaEvent, Settlement]),
+    BullModule.registerQueue({ name: RECONCILIATION_QUEUE }),
     PagaModule,
     TransfersModule,
     MerchantModule,

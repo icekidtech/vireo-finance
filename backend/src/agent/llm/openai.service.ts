@@ -43,7 +43,8 @@ export class OpenAIService {
   ): Promise<{ reply: string; toolsExecuted: string[] }> {
     if (!this.client) {
       return {
-        reply: 'The AI assistant is not configured (OPENAI_API_KEY missing). Please contact support.',
+        reply:
+          'The AI assistant is not configured (OPENAI_API_KEY missing). Please contact support.',
         toolsExecuted: [],
       };
     }
@@ -97,7 +98,9 @@ export class OpenAIService {
         try {
           toolInput = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
         } catch {
-          this.logger.warn(`Failed to parse tool args for ${toolName}: ${toolCall.function.arguments}`);
+          this.logger.warn(
+            `Failed to parse tool args for ${toolName}: ${toolCall.function.arguments}`,
+          );
         }
 
         this.logger.log(`OpenAI → ${toolName}(${JSON.stringify(toolInput).slice(0, 200)})`);
@@ -149,7 +152,8 @@ const TOOL_DEFINITIONS: ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'get_balance',
-      description: "Get the user's current wallet balance, including held funds and available balance.",
+      description:
+        "Get the user's current wallet balance, including held funds and available balance.",
       parameters: {
         type: 'object',
         properties: {},
@@ -192,7 +196,8 @@ const TOOL_DEFINITIONS: ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'create_transfer_draft',
-      description: 'Create a draft transfer (does NOT execute it — user must confirm). Returns a challenge that must be signed.',
+      description:
+        'Create a draft transfer (does NOT execute it — user must confirm). Returns a challenge that must be signed.',
       parameters: {
         type: 'object',
         properties: {

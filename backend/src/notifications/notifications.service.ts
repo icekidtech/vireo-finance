@@ -72,6 +72,17 @@ export class NotificationsService {
     );
   }
 
+  /** First notification a new user sees in the app inbox. */
+  async sendWelcome(user: { id: string; name: string }): Promise<void> {
+    await this.send(
+      user.id,
+      'Welcome to Vireo',
+      `Hi ${user.name.trim().split(/\s+/)[0]}, your account is ready. Share your account number to receive money.`,
+      [{ type: 'in_app', enabled: true }],
+      { scope: 'personal' },
+    );
+  }
+
   private formatMinor(minor: bigint): string {
     const sign = minor < 0n ? '-' : '';
     const absolute = minor < 0n ? -minor : minor;
@@ -79,12 +90,4 @@ export class NotificationsService {
     const fraction = (absolute % 100n).toString().padStart(2, '0');
     return `${sign}${whole}.${fraction}`;
   }
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }

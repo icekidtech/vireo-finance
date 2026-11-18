@@ -287,13 +287,7 @@ export class PagaService {
           customerIdExpirationDate: expiry || undefined,
           ...(input.customerIdPhoto ? { customerIdPhoto: input.customerIdPhoto } : {}),
         },
-        [
-          input.referenceNumber,
-          input.customerPhoneNumber,
-          input.customerIdType,
-          idNumber,
-          expiry,
-        ],
+        [input.referenceNumber, input.customerPhoneNumber, input.customerIdType, idNumber, expiry],
       );
 
       return {

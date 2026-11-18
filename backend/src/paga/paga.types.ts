@@ -104,4 +104,3 @@ export interface RegisterCustomerIdentificationResult {
   referenceNumber: string;
   raw: Record<string, unknown>;
 }
-

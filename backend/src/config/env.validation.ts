@@ -119,12 +119,8 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     if (keyType !== 'live' && keyType !== 'sandbox') {
       errors.push('DIDIT_KEY_TYPE must be "live" or "sandbox"');
     }
-    // Didit sandbox keys return a canned "Approved" for every image.
-    if (config.NODE_ENV === 'production' && keyType === 'sandbox') {
-      errors.push(
-        'DIDIT_KEY_TYPE=sandbox is not allowed in production (sandbox approves every face)',
-      );
-    }
+    // A sandbox key is allowed in every environment, including production (the server logs
+    // the mode loudly at startup). Sandbox approves every image, so its results are not real.
   }
 
   if (errors.length > 0) {

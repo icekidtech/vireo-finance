@@ -14,12 +14,15 @@ const PHONE_PATTERN = /^\+?[0-9]{10,15}$/;
 const HANDLE_PATTERN = /^[a-zA-Z0-9_]{3,20}$/;
 
 export class RegisterDto {
+  /** Email + password sign-in. Optional: a phone number alone signs in with a one-time code. */
+  @IsOptional()
   @IsEmail()
-  email: string;
+  email?: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(8)
-  password: string;
+  password?: string;
 
   @IsString()
   @Length(2, 120)
@@ -49,6 +52,22 @@ export class LoginDto {
   password: string;
 }
 
+export class OtpRequestDto {
+  @IsString()
+  @Matches(PHONE_PATTERN)
+  phone: string;
+}
+
+export class OtpVerifyDto {
+  @IsString()
+  @Matches(PHONE_PATTERN)
+  phone: string;
+
+  @IsString()
+  @Length(6, 6)
+  code: string;
+}
+
 export class RegisterDeviceDto {
   @IsString()
   publicKey: string;
@@ -59,4 +78,9 @@ export class RegisterDeviceDto {
   @IsOptional()
   @IsEnum(SignatureAlgorithm)
   algorithm?: SignatureAlgorithm;
+
+  /** Apple App Attest / Google Play Integrity token, verified when present. */
+  @IsOptional()
+  @IsString()
+  attestationToken?: string;
 }

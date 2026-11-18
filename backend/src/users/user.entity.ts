@@ -13,7 +13,8 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Index({ unique: true })
+  // Email-only accounts store an empty phone, so uniqueness only applies to real numbers.
+  @Index('IDX_users_phone', { unique: true, where: `"phone" <> ''` })
   @Column({ type: 'varchar', length: 32 })
   phone: string;
 

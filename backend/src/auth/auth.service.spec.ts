@@ -9,6 +9,9 @@ import { Device } from './device.entity';
 import { PhoneOtp } from './phone-otp.entity';
 import { AccountsService } from '../accounts/accounts.service';
 import { PagaService } from '../paga/paga.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { AppleAttestService } from './attestation/apple-attest.service';
+import { GooglePlayIntegrityService } from './attestation/google-play-integrity.service';
 import { hmacSha256Hex } from '../common/crypto';
 import {
   DevicePlatform,
@@ -23,6 +26,9 @@ const mockUser: User = {
   phone: '+2348012345678',
   handle: 'alice',
   name: 'Alice',
+  email: null,
+  passwordHash: null,
+  dateOfBirth: null,
   kycTier: 0,
   status: UserStatus.ACTIVE,
   role: UserRole.USER,
@@ -81,6 +87,7 @@ describe('AuthService', () => {
       createVirtualAccount: jest.fn(),
     };
     pagaService = {
+      registerCustomer: jest.fn(async () => ({})),
       createVirtualAccount: jest.fn(async () => ({
         accountNumber: '1234567890',
         bankName: 'Paga',
@@ -108,6 +115,9 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(PhoneOtp), useValue: otpsRepo },
         { provide: AccountsService, useValue: accountsService },
         { provide: PagaService, useValue: pagaService },
+        { provide: NotificationsService, useValue: { sendWelcome: jest.fn() } },
+        { provide: AppleAttestService, useValue: { verify: jest.fn() } },
+        { provide: GooglePlayIntegrityService, useValue: { verify: jest.fn() } },
         { provide: JwtService, useValue: jwtService },
         { provide: ConfigService, useValue: configService },
       ],
@@ -117,6 +127,38 @@ describe('AuthService', () => {
   });
 
   describe('register', () => {
+    it('needs a phone, or an email with a password', async () => {
+      await expect(service.register({ name: 'Alice' })).rejects.toThrow(/phone number/);
+      await expect(service.register({ name: 'Alice', email: 'a@b.co' })).rejects.toThrow(
+        /password/,
+      );
+      await expect(service.register({ name: 'Alice', password: 'longenough' })).rejects.toThrow(
+        /email/,
+      );
+    });
+
+    it('registers an email account with a hashed password', async () => {
+      usersRepo.findOne.mockResolvedValue(null);
+      let saved: any;
+      dataSource.transaction.mockImplementation(async (work: any) =>
+        work({
+          getRepository: jest.fn(() => ({
+            save: jest.fn(async (dto: any) => (saved = dto)),
+            create: jest.fn((dto: any) => dto),
+          })),
+        }),
+      );
+      const result = await service.register({
+        email: 'Alice@Example.com',
+        password: 'correct horse',
+        name: 'Alice Doe',
+      });
+      expect(result.created).toBe(true);
+      expect(saved.email).toBe('alice@example.com');
+      expect(saved.passwordHash).toMatch(/^\$2[aby]\$/);
+      expect(saved.passwordHash).not.toContain('correct horse');
+    });
+
     it('creates a user and wallet when phone is new', async () => {
       usersRepo.findOne.mockResolvedValue(null);
       dataSource.transaction.mockImplementation(async (work: any) => {
