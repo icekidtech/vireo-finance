@@ -1,6 +1,11 @@
 import { BadRequestException, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { BiometricType } from './biometric-enrollment.entity';
-import { BiometricProvider, ProviderEnrollment, ProviderVerification } from './biometric-provider';
+import {
+  BiometricProvider,
+  ProviderEnrollment,
+  ProviderVerification,
+  FaceSearchResult,
+} from './biometric-provider';
 
 export interface DiditConfig {
   apiKey: string;
@@ -33,6 +38,25 @@ interface FaceMatchResponse {
  *   template); it is only ever decrypted in memory to be sent for matching.
  * - Any vendor failure throws; nothing here can return passing scores on error.
  */
+
+interface FaceSearchResponse {
+  face_search?: {
+    status?: string;
+    total_matches?: number;
+    matches?: Array<{
+      session_id?: string;
+      vendor_user_id?: string;
+      vendor_data?: string;
+      similarity_percentage?: number;
+      user_details?: {
+        full_name?: string;
+        document_type?: string;
+        document_number?: string;
+      };
+    }>;
+  };
+}
+
 export class DiditProvider implements BiometricProvider {
   readonly name = 'didit';
   private readonly logger = new Logger(DiditProvider.name);
@@ -180,6 +204,41 @@ export class DiditProvider implements BiometricProvider {
     if (type !== BiometricType.FACE) {
       throw new BadRequestException('Only face biometrics are supported');
     }
+  }
+
+  /**
+   * Search for a face across all enrolled users (1:N identification).
+   * Returns matching users sorted by confidence.
+   */
+  async searchFace(sampleBase64: string): Promise<FaceSearchResult[]> {
+    const image = this.decode(sampleBase64);
+    const body = this.form(image, 'user_image');
+    body.append('save_api_request', 'false');
+
+    const res = (await this.post('face-search', body)) as FaceSearchResponse;
+    const search = res.face_search;
+
+    if (!search) {
+      throw new ServiceUnavailableException('Face search is not available');
+    }
+
+    // Convert Didit matches to FaceSearchResult format
+    const matches: FaceSearchResult[] = (search.matches ?? [])
+      .map((m) => ({
+        userId: m.vendor_user_id,
+        vendorData: m.vendor_data,
+        similarityScore: m.similarity_percentage ?? 0,
+        userDetails: m.user_details
+          ? {
+              fullName: m.user_details.full_name,
+              documentType: m.user_details.document_type,
+              documentNumber: m.user_details.document_number,
+            }
+          : undefined,
+      }))
+      .sort((a, b) => b.similarityScore - a.similarityScore);
+
+    return matches;
   }
 }
 

@@ -1,0 +1,34 @@
+Copyright (c) 2026 Vireo Finance. All rights reserved.
+
+PROPRIETARY SOFTWARE LICENSE NOTICE
+
+This repository, including all source code, documentation, designs, assets,
+configuration, database migrations and related materials (together, the
+"Software"), is the exclusive property of Vireo Finance ("Vireo").
+
+No licence or right of any kind is granted to any person or organisation
+except by a written agreement signed by Vireo. Without that written
+permission, you may not:
+
+  1. use, run or deploy the Software, in whole or in part;
+  2. copy, modify, merge, translate or create derivative works of it;
+  3. distribute, publish, sublicense, sell, lease or otherwise make it
+     available to any third party;
+  4. reverse engineer, decompile or disassemble it, except where applicable
+     law expressly allows this despite this restriction; or
+  5. remove or alter this notice or any other proprietary notice.
+
+Access to this repository, for example as an employee, contractor or
+collaborator, does not transfer ownership or grant any licence. Anyone with
+access may use the Software only to do work for Vireo, as Vireo directs.
+
+The Software may use third-party components and services that are licensed
+under their own terms. Those terms continue to apply to those components.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. TO THE FULLEST EXTENT
+PERMITTED BY LAW, VIREO IS NOT LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY ARISING FROM THE USE OF, OR OTHER DEALINGS IN, THE SOFTWARE.
+
+For permission requests, contact Vireo Finance at info@vireofinance.app.

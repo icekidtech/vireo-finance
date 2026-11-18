@@ -13,16 +13,22 @@ import { colors, radius, spacing, type } from '../theme';
 
 type Props = StackScreenProps<RootStackParamList, 'BiometricPayment'>;
 type Stage = 'identify' | 'capture' | 'result';
+type PaymentMode = 'deviceless' | 'legacy'; // deviceless = 1:N search, legacy = 1:1 with identifier
 
 /**
  * Pay-with-face at the till. The customer is identified and verified by the
  * server; this screen only captures the sample and reports the outcome.
+ * 
+ * Supports TWO modes:
+ * - Deviceless (1:N): Just capture face, no identifier needed [NEW]
+ * - Legacy (1:1): Enter phone/handle first, then verify [OLD]
  */
 export default function BiometricPaymentScreen({ navigation, route }: Props) {
   const { orderReference, amount } = route.params;
   const [permission, requestPermission] = useCameraPermissions();
   const camera = useRef<CameraView>(null);
   const [stage, setStage] = useState<Stage>('identify');
+  const [mode, setMode] = useState<PaymentMode>('deviceless'); // Default to deviceless
   const [identifier, setIdentifier] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,14 +63,42 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
     try {
       const photo = await camera.current.takePictureAsync({ base64: true, quality: 0.5, skipProcessing: true });
       if (!photo?.base64) throw new Error('Could not read the camera image');
-      const outcome = await api.terminalPayment({
-        orderReference,
-        customerIdentifier: identifier.trim().replace(/^[@$]/, ''),
-        biometricType: 'face',
-        biometricSample: photo.base64,
-      });
-      setResult(outcome);
-      setStage('result');
+
+      if (mode === 'deviceless') {
+        // NEW: 1:N face search - no identifier needed!
+        const identification = await api.identifyByFace({
+          sampleBase64: photo.base64,
+          amountMinor: amount,
+          metadata: {
+            orderReference,
+            terminalType: 'merchant_app',
+          },
+        });
+
+        // Map identification result to TerminalPaymentResult format
+        const outcome: TerminalPaymentResult = {
+          status: identification.decision === 'APPROVED' ? 'paid' :
+                  identification.decision === 'STEP_UP' ? 'step_up_required' : 'denied',
+          message: identification.decision === 'APPROVED' ? 'Payment approved' :
+                   identification.decision === 'STEP_UP' ? 'Additional verification required (high-value or low confidence)' :
+                   identification.reason || 'Face not recognized. Customer may not be enrolled.',
+          userId: identification.userId,
+          scores: identification.scores,
+        };
+
+        setResult(outcome);
+        setStage('result');
+      } else {
+        // LEGACY: 1:1 verification with identifier
+        const outcome = await api.terminalPayment({
+          orderReference,
+          customerIdentifier: identifier.trim().replace(/^[@$]/, ''),
+          biometricType: 'face',
+          biometricSample: photo.base64,
+        });
+        setResult(outcome);
+        setStage('result');
+      }
     } catch (e) {
       setError(errorMessage(e, 'Payment failed'));
       setStage('identify');
@@ -129,14 +163,72 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
       ) : (
         <NoticeBanner message="The customer must have enrolled their face in the Vireo app." />
       )}
-      <Field label="CUSTOMER PHONE OR $HANDLE" value={identifier} onChangeText={setIdentifier} autoCapitalize="none" placeholder="+2348012345678" />
-      <Button title="Continue to camera" disabled={!identifier.trim() || !available} onPress={startCapture} />
+
+      {/* Mode selection */}
+      <View style={styles.modeSelector}>
+        <Button
+          title="🚀 Deviceless (just face)"
+          variant={mode === 'deviceless' ? 'primary' : 'ghost'}
+          onPress={() => setMode('deviceless')}
+          style={{ flex: 1 }}
+        />
+        <Button
+          title="📱 With phone number"
+          variant={mode === 'legacy' ? 'primary' : 'ghost'}
+          onPress={() => setMode('legacy')}
+          style={{ flex: 1 }}
+        />
+      </View>
+
+      {mode === 'deviceless' ? (
+        <>
+          <Text style={styles.instruction}>
+            <Text style={styles.instructionBold}>TRUE DEVICELESS:</Text> Just capture the customer's face.
+            No phone number needed!
+          </Text>
+          <Button
+            title="Capture face & identify"
+            disabled={!available}
+            onPress={startCapture}
+          />
+        </>
+      ) : (
+        <>
+          <Field
+            label="CUSTOMER PHONE OR $HANDLE"
+            value={identifier}
+            onChangeText={setIdentifier}
+            autoCapitalize="none"
+            placeholder="+2348012345678"
+          />
+          <Button
+            title="Continue to camera"
+            disabled={!identifier.trim() || !available}
+            onPress={startCapture}
+          />
+        </>
+      )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   amountRow: { alignItems: 'center', marginVertical: spacing.xl },
+  modeSelector: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  instruction: {
+    ...type.body,
+    color: colors.textMuted,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  instructionBold: {
+    ...type.bodyStrong,
+    color: colors.accent,
+  },
   cameraWrap: { flex: 1, backgroundColor: colors.black },
   overlay: { flex: 1, alignItems: 'center', justifyContent: 'space-between', padding: spacing.xl, paddingTop: 80, paddingBottom: 48 },
   cameraTitle: { ...type.display, color: colors.white },

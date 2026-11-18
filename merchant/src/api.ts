@@ -313,6 +313,8 @@ export class VireoApi {
   /**
    * Face payment at the till. Always resolves with a `status`; the
    * server never says why a biometric was denied.
+   * 
+   * LEGACY: Requires customer identifier (1:1 verification)
    */
   async terminalPayment(input: {
     orderReference: string;
@@ -325,6 +327,31 @@ export class VireoApi {
       input,
       { timeout: 45_000 },
     );
+    return data;
+  }
+
+  /**
+   * TRUE DEVICELESS: Identify customer by face (1:N search).
+   * No identifier needed - just capture face and system finds the customer.
+   * 
+   * Returns userId if identified, or denies if not found/enrolled.
+   */
+  async identifyByFace(input: {
+    sampleBase64: string;
+    amountMinor?: number;
+    metadata?: Record<string, unknown>;
+  }) {
+    const { data } = await this.client.post<{
+      decision: 'APPROVED' | 'DENIED' | 'STEP_UP';
+      userId?: string;
+      scores: {
+        matchScore: number;
+        livenessScore: number;
+        spoofScore: number;
+        qualityScore: number;
+      };
+      reason?: string;
+    }>('/biometrics/identify', input, { timeout: 45_000 });
     return data;
   }
 }

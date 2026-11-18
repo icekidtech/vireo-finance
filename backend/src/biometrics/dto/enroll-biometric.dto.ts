@@ -91,3 +91,30 @@ export class RevokeBiometricDto {
   @IsString()
   reason?: string;
 }
+
+/**
+ * DTO for deviceless biometric identification (1:N face search).
+ * No identifier needed - just the biometric sample.
+ */
+export class IdentifyBiometricDto {
+  /**
+   * Base64-encoded face sample for 1:N identification.
+   */
+  @IsString()
+  @IsNotEmpty()
+  sampleBase64: string;
+
+  /**
+   * Optional: amount for payment context (affects step-up thresholds).
+   */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  amountMinor?: number;
+
+  /**
+   * Context metadata: merchant ID, location, etc.
+   */
+  @IsOptional()
+  metadata?: Record<string, unknown>;
+}
