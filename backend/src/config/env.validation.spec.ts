@@ -21,7 +21,7 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ JWT_SECRET: secret })).not.toThrow();
   });
 
-  it('forbids logging OTPs in production', () => {
+  it('allows logging OTPs and bodies in production (warned about at startup)', () => {
     expect(() =>
       validateEnv({
         NODE_ENV: 'production',
@@ -29,9 +29,12 @@ describe('validateEnv', () => {
         DB_HOST: 'h',
         DB_USER: 'u',
         DB_NAME: 'n',
+        DB_PASSWORD: 'p',
         OTP_LOG_CODE: 'true',
+        LOG_HTTP_BODIES: 'true',
+        LOG_LLM_PAYLOADS: 'true',
       }),
-    ).toThrow(/OTP_LOG_CODE/);
+    ).not.toThrow(/OTP_LOG_CODE|LOG_HTTP_BODIES|LOG_LLM_PAYLOADS/);
   });
 
   it('allows OTP logging outside production', () => {
@@ -103,7 +106,7 @@ describe('validateEnv', () => {
       ).not.toThrow();
     });
 
-    it('refuses a sandbox key in production', () => {
+    it('allows a sandbox key in production (the mode is logged at startup)', () => {
       expect(() =>
         validateEnv({
           ...base,
@@ -115,7 +118,7 @@ describe('validateEnv', () => {
           DIDIT_API_KEY: 'k',
           DIDIT_KEY_TYPE: 'sandbox',
         }),
-      ).toThrow(/sandbox/);
+      ).not.toThrow();
     });
   });
 

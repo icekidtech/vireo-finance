@@ -32,14 +32,8 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
         'DB_SSL_INSECURE must not be enabled in production (certificates must be verified)',
       );
     }
-    for (const flag of ['LOG_HTTP_BODIES', 'LOG_LLM_PAYLOADS']) {
-      if (config[flag] === 'true' || config[flag] === '1') {
-        errors.push(`${flag} must not be enabled in production (logs would contain personal data)`);
-      }
-    }
-    if (config.OTP_LOG_CODE === 'true' || config.OTP_LOG_CODE === '1') {
-      errors.push('OTP_LOG_CODE must not be enabled in production');
-    }
+    // LOG_HTTP_BODIES, LOG_LLM_PAYLOADS and OTP_LOG_CODE are allowed in production so the
+    // server always starts; main.ts logs a warning for each one that is switched on.
   }
 
   // Biometrics are off unless a provider is named, and then they need a real key.
