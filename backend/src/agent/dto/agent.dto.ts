@@ -2,6 +2,7 @@ import { IsIn, IsObject, IsOptional, IsString, IsUUID, Length } from 'class-vali
 
 export const AGENT_TOOLS = [
   'get_balance',
+  'get_deposit_account',
   'list_transactions',
   'validate_recipient',
   'create_transfer_draft',

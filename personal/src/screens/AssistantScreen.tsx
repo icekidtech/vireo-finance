@@ -8,7 +8,9 @@ import { approveAndSign, biometricAvailable, ensureDeviceRegistered, signWithout
 import { showAlert } from '../lib/dialog';
 import PinPad from '../components/PinPad';
 import { errorMessage, formatMoney } from '../lib/format';
-import type { ChatDraft } from '../types';
+import type { ChatCard, ChatDraft } from '../types';
+import AccountCard from '../components/AccountCard';
+import { canCopy, copyText } from '../lib/clipboard';
 import type { RootStackParamList } from '../navigation';
 import { Button } from '../components/ui';
 import GreenBackdrop from '../components/GreenBackdrop';
@@ -19,6 +21,7 @@ type Props = StackScreenProps<RootStackParamList, 'Assistant'>;
 
 type Item =
   | { id: string; kind: 'user' | 'assistant'; text: string }
+  | { id: string; kind: 'account'; card: ChatCard }
   | { id: string; kind: 'draft'; draft: ChatDraft; state: 'pending' | 'sending' | 'sent' | 'failed'; note?: string };
 
 /**
@@ -26,6 +29,28 @@ type Item =
  * but it can never send money: a draft appears here as a card that only moves
  * once you approve it with your biometric, like any other payment.
  */
+/** The user's own account number, shown as a card they can copy from, right in the conversation. */
+function DepositCard({ card }: { card: ChatCard }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <AccountCard
+      label="Your account number"
+      number={card.accountNumber}
+      leftLabel="Bank"
+      leftValue={card.bankName}
+      rightLabel="Account name"
+      rightValue={card.accountName}
+      buttonTitle={copied ? 'Copied' : canCopy ? 'Copy' : 'Share'}
+      onPress={async () => {
+        if (await copyText(card.accountNumber)) {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }
+      }}
+    />
+  );
+}
+
 export default function AssistantScreen({ navigation }: Props) {
   const [items, setItems] = useState<Item[]>([]);
   const [text, setText] = useState('');
@@ -71,6 +96,7 @@ export default function AssistantScreen({ navigation }: Props) {
       setItems((prev) => [
         ...prev,
         { id: nextId(), kind: 'assistant', text: res.reply },
+        ...(res.cards ?? []).map((card) => ({ id: nextId(), kind: 'account' as const, card })),
         ...res.drafts.map((draft) => ({ id: nextId(), kind: 'draft' as const, draft, state: 'pending' as const })),
       ]);
     } catch (e) {
@@ -177,7 +203,9 @@ export default function AssistantScreen({ navigation }: Props) {
               </View>
             }
             renderItem={({ item }) =>
-              item.kind === 'draft' ? (
+              item.kind === 'account' ? (
+                <DepositCard card={item.card} />
+              ) : item.kind === 'draft' ? (
                 <View style={styles.draft}>
                   <Text style={styles.draftLabel}>PAYMENT READY TO APPROVE</Text>
                   <Text style={styles.draftAmount}>{formatMoney(item.draft.amount)}</Text>

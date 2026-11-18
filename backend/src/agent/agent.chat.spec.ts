@@ -7,6 +7,7 @@ function setup(opts: {
   enabled?: boolean;
   llmReplies: any[];
   banks?: { name: string; uuid: string }[];
+  deposit?: any;
 }) {
   const sessions = {
     create: jest.fn((v: unknown) => v),
@@ -35,6 +36,7 @@ function setup(opts: {
     transfers as any,
     { listBanks: jest.fn(async () => opts.banks ?? []) } as any,
     llm as any,
+    (opts.deposit ?? undefined) as any,
   );
   return { service, llm, transfers };
 }
@@ -234,5 +236,39 @@ describe('bank transfers through the assistant', () => {
       expect(() => resolveBank('first', banks)).toThrow(/Several banks match/);
       expect(() => resolveBank('nonexistent', banks)).toThrow(/No supported bank/);
     });
+  });
+});
+
+describe('funding your own account through the assistant', () => {
+  it("shows the user's own deposit account as a card, with no transfer drafted", async () => {
+    const deposit = {
+      getOrCreate: jest.fn(async () => ({
+        bankName: 'Paga',
+        accountNumber: '2996370866',
+        accountName: 'Idopise Udoh',
+      })),
+    };
+    const { service, transfers } = setup({
+      deposit,
+      llmReplies: [
+        { content: null, toolCalls: [toolCall('get_deposit_account', {})] },
+        { content: 'Transfer to the account number below from any bank.', toolCalls: [] },
+      ],
+    });
+    const result = await service.chat('user-1', {
+      message: 'how do I fund my account?',
+      deviceId: DEVICE,
+    });
+    expect(deposit.getOrCreate).toHaveBeenCalledWith('user-1');
+    expect(result.cards).toEqual([
+      {
+        type: 'deposit_account',
+        bankName: 'Paga',
+        accountNumber: '2996370866',
+        accountName: 'Idopise Udoh',
+      },
+    ]);
+    expect(result.drafts).toHaveLength(0);
+    expect(transfers.createDraft).not.toHaveBeenCalled();
   });
 });

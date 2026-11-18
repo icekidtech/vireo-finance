@@ -13,6 +13,6 @@ import { UserDepositService } from './user-deposit.service';
   imports: [TypeOrmModule.forFeature([Account, VirtualAccount, User]), LedgerModule, PagaModule],
   controllers: [AccountsController],
   providers: [AccountsService, UserDepositService],
-  exports: [AccountsService, TypeOrmModule],
+  exports: [AccountsService, UserDepositService, TypeOrmModule],
 })
 export class AccountsModule {}

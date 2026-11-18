@@ -165,6 +165,15 @@ export interface ChatResponse {
   reply: string;
   toolsExecuted: string[];
   drafts: ChatDraft[];
+  /** Things the assistant wants shown rather than described, e.g. the user's deposit account. */
+  cards?: ChatCard[];
+}
+
+export interface ChatCard {
+  type: 'deposit_account';
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
 }
 
 export interface KycRecord {
