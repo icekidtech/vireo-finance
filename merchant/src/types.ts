@@ -151,6 +151,4 @@ export interface VerifyOtpResult {
 export type TerminalPaymentResult =
   | { status: 'paid'; transfer: { id: string; amount: string; currency: string; status: string } }
   | { status: 'step_up_required'; message: string; orderReference: string }
-  | { status: 'denied'; message: string }
-  /** The face matched an enrolled customer, but nothing was charged: face identification does not take payment. */
-  | { status: 'identified'; message: string };
+  | { status: 'denied'; message: string };

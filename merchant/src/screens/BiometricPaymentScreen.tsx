@@ -17,7 +17,7 @@ type Stage = 'identify' | 'capture' | 'result';
 type PaymentMode = 'deviceless' | 'legacy'; // deviceless = 1:N search, legacy = 1:1 with identifier
 
 /**
- * Pay-with-face at the till. The customer is identified and verified by the
+ * Pay-with-face at the till. The customer is identified and charged by the
  * server; this screen only captures the sample and reports the outcome.
  * 
  * Supports TWO modes:
@@ -67,34 +67,12 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
       const sample = await shrinkFaceImage(photo.base64);
 
       if (mode === 'deviceless') {
-        // 1:N face search: no identifier needed. This only IDENTIFIES the customer. Taking payment
-        // by face is not available yet, so a match is reported as "recognised", never as "paid".
-        const identification = await api.identifyByFace({
+        // Just a face: the server searches for the customer and takes the payment, so the app only
+        // sends the order and the photo. It never says who to charge.
+        const outcome = await api.terminalPaymentByFace({
+          orderReference,
           sampleBase64: sample,
-          amountMinor: Math.round(Number(amount) * 100),
-          metadata: {
-            orderReference,
-            terminalType: 'merchant_app',
-          },
         });
-
-        const outcome: TerminalPaymentResult =
-          identification.decision === 'APPROVED'
-            ? {
-                status: 'identified',
-                message:
-                  'Customer recognised. No payment was taken: charging by face is not available yet, so ask them to pay with the QR code.',
-              }
-            : identification.decision === 'STEP_UP'
-              ? {
-                  status: 'step_up_required',
-                  message: 'Additional verification is required for this customer or amount.',
-                  orderReference,
-                }
-              : {
-                  status: 'denied',
-                  message: identification.reason || 'Face not recognised. The customer may not be enrolled.',
-                };
 
         setResult(outcome);
         setStage('result');
@@ -126,7 +104,7 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
           <Text style={styles.cameraTitle}>{formatMoney(amount)}</Text>
           <View />
           <Text style={styles.cameraHint}>Ask the customer to look at the camera</Text>
-          <Button title={mode === 'deviceless' ? 'Capture & identify' : 'Capture & pay'} variant="accent" loading={busy} onPress={captureAndPay} style={{ alignSelf: 'stretch' }} />
+          <Button title="Capture & pay" variant="accent" loading={busy} onPress={captureAndPay} style={{ alignSelf: 'stretch' }} />
           <Button title="Cancel" variant="ghost" onPress={() => setStage('identify')} />
         </View>
       </View>
@@ -142,7 +120,7 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
             <Text style={[styles.badgeText, paid && { color: colors.accent }]}>{paid ? '✓' : '!'}</Text>
           </Pop>
           <Text style={styles.resultTitle}>
-            {paid ? 'Payment received' : result.status === 'denied' ? 'Not verified' : result.status === 'identified' ? 'Customer recognised' : 'Customer approval needed'}
+            {paid ? 'Payment received' : result.status === 'denied' ? 'Not verified' : 'Customer approval needed'}
           </Text>
           {paid ? <BigMoney amount={amount} color={colors.black} /> : <Text style={styles.resultBody}>{result.message}</Text>}
         </View>
@@ -193,11 +171,11 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
       {mode === 'deviceless' ? (
         <>
           <Text style={styles.instruction}>
-            <Text style={styles.instructionBold}>TRUE DEVICELESS:</Text> Just capture the customer's face.
-            No phone number needed!
+            <Text style={styles.instructionBold}>JUST A FACE:</Text> capture the customer's face and the
+            payment is taken from their Vireo wallet. No phone number needed. Larger orders are paid with the QR code.
           </Text>
           <Button
-            title="Capture face & identify"
+            title="Capture face & pay"
             disabled={!available}
             onPress={startCapture}
           />

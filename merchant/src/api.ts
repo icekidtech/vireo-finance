@@ -329,6 +329,19 @@ export class VireoApi {
    * 
    * LEGACY: Requires customer identifier (1:1 verification)
    */
+  /**
+   * Pay an order with just a face: no phone number. The server finds the customer and takes the
+   * payment (when it is switched on and the order is small enough), so no customer id is sent.
+   */
+  async terminalPaymentByFace(input: { orderReference: string; sampleBase64: string }) {
+    const { data } = await this.client.post<TerminalPaymentResult>(
+      '/merchants/terminal-payment/face',
+      input,
+      { timeout: 45_000 },
+    );
+    return data;
+  }
+
   async terminalPayment(input: {
     orderReference: string;
     customerIdentifier: string;

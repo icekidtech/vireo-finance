@@ -69,6 +69,19 @@ export interface AppConfig {
     /** Base64 AES-256 key that encrypts stored biometric templates. */
     encryptionKey: string;
     didit: { apiKey: string; baseUrl: string; keyType: string; timeoutMs: number };
+    /**
+     * Charging a customer from their face alone (no phone number at the till). Off by default.
+     * The face checker is the only thing authorising the payment, so it is also refused while the
+     * checker runs in vendor test mode (which approves everything) unless that is allowed on purpose.
+     */
+    faceOnly: {
+      enabled: boolean;
+      allowSandbox: boolean;
+      /** Largest order, in kobo, that a face alone may pay. Anything bigger needs the customer's phone. */
+      maxAmountMinor: number;
+      /** Match score (0-100) the face must reach, stricter than the general threshold. */
+      minMatchScore: number;
+    };
   };
   storage: {
     /** Document storage backend; empty disables document uploads. */
@@ -224,6 +237,12 @@ export default (): AppConfig => ({
       ),
       keyType: (process.env.DIDIT_KEY_TYPE ?? '').trim().toLowerCase(),
       timeoutMs: parseInt(process.env.DIDIT_TIMEOUT_MS ?? '15000', 10),
+    },
+    faceOnly: {
+      enabled: bool(process.env.FACE_ONLY_PAYMENTS_ENABLED, false),
+      allowSandbox: bool(process.env.FACE_ONLY_PAYMENTS_ALLOW_SANDBOX, false),
+      maxAmountMinor: int(process.env.FACE_ONLY_MAX_AMOUNT_MINOR, 2_000_000),
+      minMatchScore: int(process.env.FACE_ONLY_MIN_MATCH_SCORE, 95),
     },
   },
   openai: {

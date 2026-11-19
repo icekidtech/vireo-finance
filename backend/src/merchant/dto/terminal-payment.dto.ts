@@ -52,3 +52,20 @@ export class CreateTerminalPaymentDto {
   @IsObject()
   metadata?: Record<string, unknown>;
 }
+
+/** Pay an order with just a face: no phone number or handle. The customer is found by the server. */
+export class CreateFaceTerminalPaymentDto {
+  @IsString()
+  @IsNotEmpty()
+  orderReference: string;
+
+  /** Base64-encoded photo of the customer's face. */
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(7_000_000)
+  sampleBase64: string;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
+}

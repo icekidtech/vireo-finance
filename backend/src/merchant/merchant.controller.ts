@@ -21,7 +21,7 @@ import {
   UpdateMerchantDto,
   VerifyKybDto,
 } from './dto/merchant.dto';
-import { CreateTerminalPaymentDto } from './dto/terminal-payment.dto';
+import { CreateFaceTerminalPaymentDto, CreateTerminalPaymentDto } from './dto/terminal-payment.dto';
 import { TerminalPaymentService } from './terminal-payment.service';
 import { MerchantVerificationService } from './merchant-verification.service';
 import { MerchantDepositService } from './merchant-deposit.service';
@@ -105,6 +105,16 @@ export class MerchantController {
   @HttpCode(200)
   terminalPayment(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateTerminalPaymentDto) {
     return this.terminal.pay(user.userId, dto);
+  }
+
+  /** Pay with just a face: the server finds the customer. Always 200; the body's `status` is the outcome. */
+  @Post('terminal-payment/face')
+  @HttpCode(200)
+  terminalPaymentByFace(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateFaceTerminalPaymentDto,
+  ) {
+    return this.terminal.payByFace(user.userId, dto);
   }
 
   @Get('dashboard')

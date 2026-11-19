@@ -415,3 +415,77 @@ describe('TransfersService.createDraft to one of our own account numbers', () =>
     expect(paga.validateBankAccount).toHaveBeenCalled();
   });
 });
+
+describe('TransfersService.payOrderWithBiometric', () => {
+  function make(opts: { notifyFails?: boolean } = {}) {
+    const order = {
+      id: 'order-1',
+      reference: 'ord_abc',
+      merchantId: 'm1',
+      amount: '250000',
+      status: 'open',
+      expiresAt: new Date(Date.now() + 60_000),
+    };
+    const manager = {
+      getRepository: jest.fn(() => ({
+        findOne: jest.fn(async () => order),
+        create: jest.fn((v: any) => ({ id: 't1', ...v })),
+        save: jest.fn(async (v: any) => v),
+      })),
+    };
+    const ledger = {
+      runInTransaction: jest.fn(async (work: any) => work(manager)),
+      post: jest.fn(),
+    };
+    const notifications = {
+      send: jest.fn(async (userId: string, ..._rest: unknown[]) => {
+        if (opts.notifyFails && userId === 'customer-1') throw new Error('inbox down');
+      }),
+    };
+    const service = new TransfersService(
+      {} as any,
+      { findOne: jest.fn(async () => ({ id: 'customer-1', kycTier: 1, status: 'active' })) } as any,
+      {
+        findOne: jest.fn(async () => ({
+          id: 'm1',
+          ownerUserId: 'owner-1',
+          businessName: 'Ada Kitchen',
+        })),
+      } as any,
+      {} as any,
+      {
+        getWallet: jest.fn(async () => ({ id: 'wallet-1' })),
+        getMerchantAccount: jest.fn(async () => ({ id: 'macct-1' })),
+      } as any,
+      ledger as any,
+      {} as any,
+      { preCheck: jest.fn() } as any,
+      {} as any,
+      notifications as any,
+    );
+    return { service, notifications };
+  }
+
+  const input = {
+    customerUserId: 'customer-1',
+    merchantId: 'm1',
+    orderReference: 'ord_abc',
+    biometricTypes: ['face'],
+  };
+
+  it('tells the customer afterwards, since they did not approve it on their phone', async () => {
+    const { service, notifications } = make();
+    await service.payOrderWithBiometric(input);
+    const toCustomer = notifications.send.mock.calls.find((c) => c[0] === 'customer-1');
+    expect(toCustomer).toBeDefined();
+    expect(toCustomer![1]).toBe('You paid with your face');
+    expect(toCustomer![2]).toContain('Ada Kitchen');
+    expect(toCustomer![2]).toContain('2500.00');
+    expect(toCustomer![4]).toMatchObject({ scope: 'personal', kind: 'biometric_payment' });
+  });
+
+  it('still completes the payment if the notification cannot be delivered', async () => {
+    const { service } = make({ notifyFails: true });
+    await expect(service.payOrderWithBiometric(input)).resolves.toBeDefined();
+  });
+});

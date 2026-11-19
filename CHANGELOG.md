@@ -13,6 +13,9 @@ Versions `0.1.0` to `0.3.0` were cut retroactively from the commit history of th
 - Email sign-in codes for both apps, with the PIN-reset code also sent by email (`POST /pin/reset/code`). Codes can be requested once every 30 seconds per email.
 - Tests for the email-code login, the PIN-reset code and registration.
 
+- Pay with just a face (no phone number) at the till: `POST /merchants/terminal-payment/face`. The server finds the customer and takes the payment. Off by default (`FACE_ONLY_PAYMENTS_ENABLED`), refused while the face checker is in test mode, limited to a small order amount, requires a stricter face match, and limited to 10 searches per business per minute.
+- The customer is now notified when a payment is taken with their face.
+
 ### Changed
 - Sign-up in both apps now asks for first name, last name, email and phone; sign-in asks for the email only. Phone numbers are saved on the profile and never receive a code.
 - `POST /auth/register` requires an `email` and a `phone` (a password is optional). A phone number already used by another account is refused.

@@ -604,7 +604,29 @@ export class TransfersService {
     });
 
     await this.notifyMerchantPaid(merchantId, transfer);
+    await this.notifyCustomerPaidByFace(customerUserId, merchant.businessName, transfer);
     return { transfer: presentTransfer(transfer) };
+  }
+
+  /** A payment taken with a face is not approved on the customer's phone, so they are told afterwards. */
+  private async notifyCustomerPaidByFace(
+    customerUserId: string,
+    businessName: string,
+    transfer: Transfer,
+  ): Promise<void> {
+    try {
+      await this.notifications.send(
+        customerUserId,
+        'You paid with your face',
+        `NGN ${formatMinor(BigInt(transfer.amount))} was paid to ${businessName}. If this was not you, contact support right away.`,
+        [{ type: 'in_app', enabled: true }],
+        { kind: 'biometric_payment', scope: 'personal', transferId: transfer.id },
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Customer payment notification failed for transfer=${transfer.id}: ${String(error)}`,
+      );
+    }
   }
 
   private async notifyMerchantPaid(merchantId: string, transfer: Transfer): Promise<void> {

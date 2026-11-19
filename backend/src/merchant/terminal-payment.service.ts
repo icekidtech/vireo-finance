@@ -1,17 +1,21 @@
 import {
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
   BadRequestException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AttemptContext, AttemptResult } from '../biometrics/biometric-attempt.entity';
 import { BiometricsService, FusionResult } from '../biometrics/biometrics.service';
 import { MerchantOrderStatus } from '../common/enums';
 import { TransfersService } from '../transfers/transfers.service';
-import { CreateTerminalPaymentDto } from './dto/terminal-payment.dto';
+import { CreateFaceTerminalPaymentDto, CreateTerminalPaymentDto } from './dto/terminal-payment.dto';
 import { MerchantOrder } from './merchant-order.entity';
 import { MerchantService } from './merchant.service';
 
@@ -46,7 +50,134 @@ export class TerminalPaymentService {
     private readonly merchants: MerchantService,
     private readonly biometrics: BiometricsService,
     private readonly transfers: TransfersService,
+    private readonly config: ConfigService,
   ) {}
+
+  /** Face searches allowed per business per minute: a till has no reason to try faster than this. */
+  private static readonly FACE_ATTEMPTS_PER_MINUTE = 10;
+  private readonly faceAttempts = new Map<string, number[]>();
+
+  private faceOnlySettings() {
+    const cfg = this.config.get<{
+      enabled?: boolean;
+      allowSandbox?: boolean;
+      maxAmountMinor?: number;
+      minMatchScore?: number;
+    }>('biometrics.faceOnly');
+    return {
+      enabled: cfg?.enabled === true,
+      allowSandbox: cfg?.allowSandbox === true,
+      maxAmountMinor: BigInt(cfg?.maxAmountMinor ?? 2_000_000),
+      minMatchScore: cfg?.minMatchScore ?? 95,
+    };
+  }
+
+  /**
+   * Pay an order with just the customer's face: no phone number or handle. The server runs the face
+   * search, so the customer is never named by the client, and then uses the same payment routine as
+   * every other till payment (order checks, risk limits, ledger, notifications).
+   *
+   * Because the face is the ONLY thing authorising the money, it is stricter than the other paths:
+   *  - off unless an operator switches it on, and refused while the face checker is in vendor test
+   *    mode (which approves everything) unless that is allowed on purpose;
+   *  - only for orders up to a small limit, checked BEFORE any face is processed; bigger orders must
+   *    be approved on the customer's phone;
+   *  - the face must clear a higher match score than the general threshold;
+   *  - a limited number of searches per business per minute;
+   *  - every denial looks the same, so the till learns nothing about who is or is not enrolled.
+   */
+  async payByFace(
+    merchantOwnerUserId: string,
+    dto: CreateFaceTerminalPaymentDto,
+  ): Promise<TerminalPaymentResult> {
+    const settings = this.faceOnlySettings();
+    if (!settings.enabled) {
+      throw new ServiceUnavailableException('Paying with just a face is not switched on yet');
+    }
+    if (
+      this.config.get<string>('biometrics.didit.keyType') === 'sandbox' &&
+      !settings.allowSandbox
+    ) {
+      throw new ServiceUnavailableException(
+        'Paying with just a face is not available while the face checker is in test mode',
+      );
+    }
+
+    const merchant = await this.merchants.getByOwner(merchantOwnerUserId);
+    if (merchant.kybStatus !== 'verified') {
+      throw new ForbiddenException('Merchant must be verified to accept biometric payments');
+    }
+    this.throttleFaceSearches(merchant.id);
+
+    const order = await this.orders.findOne({
+      where: { reference: dto.orderReference, merchantId: merchant.id },
+    });
+    if (!order) throw new NotFoundException('Merchant order not found');
+    if (order.status !== MerchantOrderStatus.OPEN) {
+      throw new BadRequestException(`Merchant order is ${order.status}`);
+    }
+    if (order.expiresAt && order.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('Merchant order has expired');
+    }
+
+    const amount = BigInt(order.amount);
+    if (amount > settings.maxAmountMinor) {
+      return {
+        status: 'step_up_required',
+        orderReference: order.reference,
+        message:
+          'This amount is too large to pay with a face alone. Ask the customer to pay with the QR code.',
+      };
+    }
+
+    const result = await this.biometrics.identifyByFace(
+      dto.sampleBase64,
+      AttemptContext.PAYMENT,
+      Number(amount),
+    );
+
+    if (result.decision === AttemptResult.STEP_UP) {
+      return {
+        status: 'step_up_required',
+        orderReference: order.reference,
+        message: 'Ask the customer to approve this payment on their phone by scanning the QR code.',
+      };
+    }
+    const customerUserId = result.userId;
+    if (
+      result.decision !== AttemptResult.APPROVED ||
+      !customerUserId ||
+      result.scores.matchScore < settings.minMatchScore
+    ) {
+      return { status: 'denied', message: DENIED_MESSAGE };
+    }
+    // Never let a merchant pay itself with its own face.
+    if (customerUserId === merchantOwnerUserId) {
+      return { status: 'denied', message: DENIED_MESSAGE };
+    }
+
+    const { transfer } = await this.transfers.payOrderWithBiometric({
+      customerUserId,
+      merchantId: merchant.id,
+      orderReference: order.reference,
+      biometricTypes: ['face'],
+    });
+    this.logger.log(`Face-only payment completed order=${order.reference} merchant=${merchant.id}`);
+    return { status: 'paid', transfer };
+  }
+
+  private throttleFaceSearches(merchantId: string): void {
+    const now = Date.now();
+    const recent = (this.faceAttempts.get(merchantId) ?? []).filter((t) => now - t < 60_000);
+    if (recent.length >= TerminalPaymentService.FACE_ATTEMPTS_PER_MINUTE) {
+      throw new HttpException(
+        'Too many face attempts. Wait a minute and try again.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    recent.push(now);
+    this.faceAttempts.set(merchantId, recent);
+  }
 
   async pay(
     merchantOwnerUserId: string,

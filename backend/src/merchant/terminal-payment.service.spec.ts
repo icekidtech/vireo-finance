@@ -32,13 +32,39 @@ function fusion(decision: AttemptResult, userId: string | null = CUSTOMER) {
   };
 }
 
-function setup(opts: { merchant?: any; order?: any; verify?: jest.Mock } = {}) {
+type FaceOnlyConfig = {
+  enabled?: boolean;
+  allowSandbox?: boolean;
+  maxAmountMinor?: number;
+  minMatchScore?: number;
+};
+
+function setup(
+  opts: {
+    merchant?: any;
+    order?: any;
+    verify?: jest.Mock;
+    identify?: jest.Mock;
+    faceOnly?: FaceOnlyConfig;
+    keyType?: string;
+  } = {},
+) {
   const orders = {
     findOne: jest.fn(async () => (opts.order === undefined ? makeOrder() : opts.order)),
   };
   const merchants = { getByOwner: jest.fn(async () => opts.merchant ?? makeMerchant()) };
   const verify = opts.verify ?? jest.fn(async () => fusion(AttemptResult.APPROVED));
-  const biometrics = { verify };
+  const identify = opts.identify ?? jest.fn(async () => fusion(AttemptResult.APPROVED));
+  const biometrics = { verify, identifyByFace: identify };
+  const config = {
+    get: jest.fn((key: string) =>
+      key === 'biometrics.faceOnly'
+        ? (opts.faceOnly ?? { enabled: true, allowSandbox: false })
+        : key === 'biometrics.didit.keyType'
+          ? (opts.keyType ?? 'live')
+          : undefined,
+    ),
+  };
   const transfers = {
     payOrderWithBiometric: jest.fn(async () => ({ transfer: { id: 't-1', status: 'completed' } })),
   };
@@ -47,8 +73,9 @@ function setup(opts: { merchant?: any; order?: any; verify?: jest.Mock } = {}) {
     merchants as any,
     biometrics as any,
     transfers as any,
+    config as any,
   );
-  return { service, orders, merchants, verify, transfers };
+  return { service, orders, merchants, verify, identify, transfers };
 }
 
 const dto = (overrides: Record<string, unknown> = {}) => ({
@@ -181,5 +208,169 @@ describe('TerminalPaymentService', () => {
     const result = await service.pay(MERCHANT_OWNER, dto());
     expect(result.status).toBe('denied');
     expect(transfers.payOrderWithBiometric).not.toHaveBeenCalled();
+  });
+});
+
+describe('TerminalPaymentService.payByFace (a face and nothing else)', () => {
+  const faceDto = (o: Record<string, unknown> = {}) => ({
+    orderReference: 'ord_abc',
+    sampleBase64: 'AAAA',
+    ...o,
+  });
+  const strongMatch = (userId: string | null = CUSTOMER) => ({
+    decision: AttemptResult.APPROVED,
+    userId: userId ?? undefined,
+    scores: { matchScore: 98, livenessScore: 95, spoofScore: 1, qualityScore: 90 },
+  });
+
+  it('is off unless an operator switches it on, and searches no face while off', async () => {
+    const { service, identify, transfers } = setup({ faceOnly: { enabled: false } });
+    await expect(service.payByFace(MERCHANT_OWNER, faceDto())).rejects.toThrow('not switched on');
+    expect(identify).not.toHaveBeenCalled();
+    expect(transfers.payOrderWithBiometric).not.toHaveBeenCalled();
+  });
+
+  it('refuses while the face checker is in vendor test mode (it approves everything)', async () => {
+    const { service, identify } = setup({ keyType: 'sandbox' });
+    await expect(service.payByFace(MERCHANT_OWNER, faceDto())).rejects.toThrow('test mode');
+    expect(identify).not.toHaveBeenCalled();
+  });
+
+  it('works in test mode only when that was allowed on purpose', async () => {
+    const identify = jest.fn(async () => strongMatch());
+    const { service, transfers } = setup({
+      keyType: 'sandbox',
+      faceOnly: { enabled: true, allowSandbox: true },
+      identify,
+    });
+    await expect(service.payByFace(MERCHANT_OWNER, faceDto())).resolves.toMatchObject({
+      status: 'paid',
+    });
+    expect(transfers.payOrderWithBiometric).toHaveBeenCalledTimes(1);
+  });
+
+  it('charges the customer the SERVER found, for the order amount, never the request', async () => {
+    const identify = jest.fn(async () => strongMatch('someone-the-server-found'));
+    const { service, transfers } = setup({ identify });
+    const result = await service.payByFace(MERCHANT_OWNER, faceDto({ customerUserId: 'attacker' }));
+    expect(result).toMatchObject({ status: 'paid' });
+    expect(transfers.payOrderWithBiometric).toHaveBeenCalledWith({
+      customerUserId: 'someone-the-server-found',
+      merchantId: 'merchant-1',
+      orderReference: 'ord_abc',
+      biometricTypes: ['face'],
+    });
+    expect(identify).toHaveBeenCalledWith('AAAA', expect.anything(), 250000);
+  });
+
+  it('refuses an unverified business before any face is processed', async () => {
+    const { service, identify } = setup({ merchant: makeMerchant({ kybStatus: 'pending' }) });
+    await expect(service.payByFace(MERCHANT_OWNER, faceDto())).rejects.toThrow(ForbiddenException);
+    expect(identify).not.toHaveBeenCalled();
+  });
+
+  it("only pays the calling business's own open orders", async () => {
+    const { service, identify } = setup({ order: null });
+    await expect(service.payByFace(MERCHANT_OWNER, faceDto())).rejects.toThrow(NotFoundException);
+    const closed = setup({ order: makeOrder({ status: MerchantOrderStatus.PAID }) });
+    await expect(closed.service.payByFace(MERCHANT_OWNER, faceDto())).rejects.toThrow(
+      BadRequestException,
+    );
+    const expired = setup({ order: makeOrder({ expiresAt: new Date(Date.now() - 1000) }) });
+    await expect(expired.service.payByFace(MERCHANT_OWNER, faceDto())).rejects.toThrow('expired');
+    expect(identify).not.toHaveBeenCalled();
+  });
+
+  it('sends a large order to the phone, without processing the face or taking money', async () => {
+    const { service, identify, transfers } = setup({
+      order: makeOrder({ amount: '2500000' }),
+      faceOnly: { enabled: true, maxAmountMinor: 2000000 },
+    });
+    await expect(service.payByFace(MERCHANT_OWNER, faceDto())).resolves.toMatchObject({
+      status: 'step_up_required',
+    });
+    expect(identify).not.toHaveBeenCalled();
+    expect(transfers.payOrderWithBiometric).not.toHaveBeenCalled();
+  });
+
+  it('pays an order exactly at the limit', async () => {
+    const { service } = setup({
+      order: makeOrder({ amount: '2000000' }),
+      faceOnly: { enabled: true, maxAmountMinor: 2000000 },
+      identify: jest.fn(async () => strongMatch()),
+    });
+    await expect(service.payByFace(MERCHANT_OWNER, faceDto())).resolves.toMatchObject({
+      status: 'paid',
+    });
+  });
+
+  it('denies a face that does not clear the stricter score, even if the checker approved it', async () => {
+    const identify = jest.fn(async () => ({
+      ...strongMatch(),
+      scores: { matchScore: 90, livenessScore: 95, spoofScore: 1, qualityScore: 90 },
+    }));
+    const { service, transfers } = setup({ identify });
+    await expect(service.payByFace(MERCHANT_OWNER, faceDto())).resolves.toEqual({
+      status: 'denied',
+      message: 'Biometric verification failed',
+    });
+    expect(transfers.payOrderWithBiometric).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['not recognised', { decision: AttemptResult.DENIED, userId: undefined }],
+    ['an error', { decision: AttemptResult.ERROR, userId: undefined }],
+    ['approved but no customer resolved', { decision: AttemptResult.APPROVED, userId: undefined }],
+  ])('denies the same way when the result is %s', async (_label, partial) => {
+    const identify = jest.fn(async () => ({
+      ...strongMatch(),
+      ...partial,
+    }));
+    const { service, transfers } = setup({ identify });
+    await expect(service.payByFace(MERCHANT_OWNER, faceDto())).resolves.toEqual({
+      status: 'denied',
+      message: 'Biometric verification failed',
+    });
+    expect(transfers.payOrderWithBiometric).not.toHaveBeenCalled();
+  });
+
+  it('never lets a business pay itself with its own face', async () => {
+    const identify = jest.fn(async () => strongMatch(MERCHANT_OWNER));
+    const { service, transfers } = setup({ identify });
+    await expect(service.payByFace(MERCHANT_OWNER, faceDto())).resolves.toMatchObject({
+      status: 'denied',
+    });
+    expect(transfers.payOrderWithBiometric).not.toHaveBeenCalled();
+  });
+
+  it('does not take money when the checker wants a second factor', async () => {
+    const identify = jest.fn(async () => ({ ...strongMatch(), decision: AttemptResult.STEP_UP }));
+    const { service, transfers } = setup({ identify });
+    await expect(service.payByFace(MERCHANT_OWNER, faceDto())).resolves.toMatchObject({
+      status: 'step_up_required',
+    });
+    expect(transfers.payOrderWithBiometric).not.toHaveBeenCalled();
+  });
+
+  it('limits face searches per business per minute', async () => {
+    const { service, identify } = setup();
+    for (let i = 0; i < 10; i += 1) {
+      await service.payByFace(MERCHANT_OWNER, faceDto());
+    }
+    await expect(service.payByFace(MERCHANT_OWNER, faceDto())).rejects.toMatchObject({
+      status: 429,
+    });
+    expect(identify).toHaveBeenCalledTimes(10);
+  });
+
+  it('never reveals who the face matched in a denial', async () => {
+    const identify = jest.fn(async () => ({
+      decision: AttemptResult.DENIED,
+      userId: 'secret-customer-id',
+      scores: { matchScore: 50, livenessScore: 90, spoofScore: 1, qualityScore: 90 },
+    }));
+    const { service } = setup({ identify });
+    const result = await service.payByFace(MERCHANT_OWNER, faceDto());
+    expect(JSON.stringify(result)).not.toContain('secret-customer-id');
   });
 });

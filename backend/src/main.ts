@@ -27,6 +27,27 @@ function logVerificationMode(config: ConfigService) {
   }
 }
 
+/** States whether a customer can be charged from their face alone, and warns when the checker is in test mode. */
+function logFaceOnlyPayments(config: ConfigService) {
+  const log = new Logger('FacePay');
+  if (config.get<boolean>('biometrics.faceOnly.enabled') !== true) {
+    log.log('Face-only payments: OFF (FACE_ONLY_PAYMENTS_ENABLED is not true)');
+    return;
+  }
+  const sandbox = config.get<string>('biometrics.didit.keyType') === 'sandbox';
+  if (sandbox && config.get<boolean>('biometrics.faceOnly.allowSandbox') !== true) {
+    log.warn(
+      'Face-only payments: ON but BLOCKED, because the face checker is in test mode (set DIDIT_KEY_TYPE=live).',
+    );
+  } else if (sandbox) {
+    log.warn(
+      'Face-only payments: ON in TEST MODE. The face checker approves everything, so use test money only.',
+    );
+  } else {
+    log.log('Face-only payments: ON (live face checker).');
+  }
+}
+
 /** Warns about every switch that writes personal data or secrets into the logs. */
 function logSensitiveLogging() {
   const on = (v?: string) => v === 'true' || v === '1';
@@ -68,6 +89,7 @@ async function bootstrap() {
   await app.listen(port, '0.0.0.0');
   logVerificationMode(config);
   logSensitiveLogging();
+  logFaceOnlyPayments(config);
   Logger.log(`Vireo API listening on http://localhost:${port}/api/v1`, 'Bootstrap');
 }
 
