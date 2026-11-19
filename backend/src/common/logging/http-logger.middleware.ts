@@ -35,7 +35,20 @@ export function httpLogger(options: HttpLoggerOptions = {}) {
       return originalSend(body as never);
     }) as Response['send'];
 
+    // A request the client gives up on (a timeout, a closed tab) never reaches 'finish', so it
+    // used to leave no log line at all, which made a slow upload look like "nothing happened".
+    let finished = false;
+    res.on('close', () => {
+      if (finished) return;
+      const ms = Number(process.hrtime.bigint() - started) / 1e6;
+      const user = (req as Request & { user?: { userId?: string } }).user?.userId;
+      logger.warn(
+        `${req.method} ${redactUrl(req.originalUrl)} -> ABORTED client closed the connection before the reply, after ${ms.toFixed(0)}ms ${user ? `user=${user}` : 'user=anon'} ip=${req.ip}`,
+      );
+    });
+
     res.on('finish', () => {
+      finished = true;
       const ms = Number(process.hrtime.bigint() - started) / 1e6;
       const user = (req as Request & { user?: { userId?: string } }).user?.userId;
       const parts = [

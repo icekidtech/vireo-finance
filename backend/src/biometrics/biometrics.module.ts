@@ -1,6 +1,7 @@
 import { Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { Merchant } from '../merchant/merchant.entity';
 import { BiometricsController } from './biometrics.controller';
 import { BiometricsService } from './biometrics.service';
 import { BiometricEnrollment } from './biometric-enrollment.entity';
@@ -12,7 +13,13 @@ import { BIOMETRIC_PROVIDER, BiometricProvider } from './biometric-provider';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([BiometricEnrollment, BiometricConsent, BiometricAttempt, User]),
+    TypeOrmModule.forFeature([
+      BiometricEnrollment,
+      BiometricConsent,
+      BiometricAttempt,
+      User,
+      Merchant,
+    ]),
   ],
   controllers: [BiometricsController],
   providers: [

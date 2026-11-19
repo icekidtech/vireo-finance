@@ -1,3 +1,4 @@
+import { shrinkFaceImage } from '../lib/image';
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -63,12 +64,13 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
     try {
       const photo = await camera.current.takePictureAsync({ base64: true, quality: 0.5, skipProcessing: true });
       if (!photo?.base64) throw new Error('Could not read the camera image');
+      const sample = await shrinkFaceImage(photo.base64);
 
       if (mode === 'deviceless') {
         // 1:N face search: no identifier needed. This only IDENTIFIES the customer. Taking payment
         // by face is not available yet, so a match is reported as "recognised", never as "paid".
         const identification = await api.identifyByFace({
-          sampleBase64: photo.base64,
+          sampleBase64: sample,
           amountMinor: Math.round(Number(amount) * 100),
           metadata: {
             orderReference,
@@ -102,7 +104,7 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
           orderReference,
           customerIdentifier: identifier.trim().replace(/^[@$]/, ''),
           biometricType: 'face',
-          biometricSample: photo.base64,
+          biometricSample: sample,
         });
         setResult(outcome);
         setStage('result');

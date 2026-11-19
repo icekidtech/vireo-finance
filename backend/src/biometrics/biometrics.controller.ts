@@ -5,11 +5,15 @@ import {
   Delete,
   Body,
   UseGuards,
+  ForbiddenException,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import { BiometricsService } from './biometrics.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Merchant } from '../merchant/merchant.entity';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { AttemptContext } from './biometric-attempt.entity';
 import {
@@ -21,7 +25,10 @@ import {
 
 @Controller('biometrics')
 export class BiometricsController {
-  constructor(private readonly biometrics: BiometricsService) {}
+  constructor(
+    private readonly biometrics: BiometricsService,
+    @InjectRepository(Merchant) private readonly merchants: Repository<Merchant>,
+  ) {}
 
   /**
    * Grant consent for biometric data collection.
@@ -124,15 +131,24 @@ export class BiometricsController {
   }
 
   /**
-   * Identify user by face (1:N search) - TRUE DEVICELESS PAYMENT.
-   * No identifier needed - just scan the face.
+   * Identify a customer by face (1:N search) at a merchant till.
    *
-   * This endpoint is typically called by merchant terminals, not end users.
-   * It requires special merchant authentication (not implemented yet).
+   * Only a signed-in merchant may call this. Without that, anyone on the internet could submit a
+   * photo and learn which Vireo customer it matches, and spend the face-search quota. The caller is
+   * told whether the face was recognised, never WHO it is: charging by face is not built yet, so
+   * the customer's identity has no use to the till.
    */
   @Post('identify')
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async identifyByFace(@Body() dto: IdentifyBiometricDto) {
+  async identifyByFace(
+    @CurrentUser() caller: AuthenticatedUser,
+    @Body() dto: IdentifyBiometricDto,
+  ) {
+    const merchant = await this.merchants.findOne({ where: { ownerUserId: caller.userId } });
+    if (!merchant) {
+      throw new ForbiddenException('Only merchants can identify customers by face');
+    }
     const result = await this.biometrics.identifyByFace(
       dto.sampleBase64,
       AttemptContext.PAYMENT,
@@ -141,7 +157,6 @@ export class BiometricsController {
 
     return {
       decision: result.decision,
-      userId: result.userId,
       scores: {
         matchScore: result.scores.matchScore,
         livenessScore: result.scores.livenessScore,

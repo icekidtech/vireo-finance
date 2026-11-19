@@ -145,3 +145,38 @@ describe('httpLogger', () => {
     expect(l.log[0]).not.toContain('123456');
   });
 });
+
+describe('httpLogger (abandoned requests)', () => {
+  function abandoned() {
+    const lines: string[] = [];
+    const spy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(((msg: unknown) => {
+      lines.push(String(msg));
+    }) as never);
+    const res: any = Object.assign(new EventEmitter(), { statusCode: 200, send: jest.fn() });
+    const req: any = {
+      method: 'POST',
+      originalUrl: '/api/v1/biometrics/identify',
+      ip: '::1',
+      headers: {},
+      user: { userId: 'u1' },
+    };
+    httpLogger()(req, res, () => undefined);
+    return { res, lines, done: () => spy.mockRestore() };
+  }
+
+  it('logs a request the client abandons before the reply', () => {
+    const { res, lines, done } = abandoned();
+    res.emit('close');
+    done();
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/POST \/api\/v1\/biometrics\/identify -> ABORTED .* user=u1/);
+  });
+
+  it('does not report a normally finished request as abandoned', () => {
+    const { res, lines, done } = abandoned();
+    res.emit('finish');
+    res.emit('close');
+    done();
+    expect(lines).toHaveLength(0);
+  });
+});
