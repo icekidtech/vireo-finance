@@ -39,6 +39,8 @@ export interface FusionResult {
   reason?: string;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class BiometricsService {
   private readonly logger = new Logger(BiometricsService.name);
@@ -95,6 +97,7 @@ export class BiometricsService {
    * Revoke consent and all associated biometric enrollments.
    */
   async revokeConsent(userId: string, reason?: string): Promise<void> {
+    await this.forgetSavedFaces(userId);
     await this.dataSource.transaction(async (manager) => {
       // Revoke all active consents
       await manager.getRepository(BiometricConsent).update(
@@ -131,9 +134,10 @@ export class BiometricsService {
       throw new ForbiddenException('Valid consent is required before enrolling biometrics');
     }
 
-    const { template, qualityScore } = await this.requireProvider().enroll(
+    const { template, qualityScore, searchRef } = await this.requireProvider().enroll(
       dto.type,
       dto.sampleBase64,
+      { userId },
     );
 
     if (qualityScore < this.getMinQualityScore()) {
@@ -145,7 +149,9 @@ export class BiometricsService {
     // Encrypt the template (AES-256-GCM, bound to this user) before storing
     const embeddingEncrypted = encryptEmbedding(template, this.requireKey(), userId);
 
-    // Revoke existing enrollments of this type (users can re-enroll)
+    // Revoke existing enrollments of this type (users can re-enroll). Their saved faces are
+    // deleted at the vendor as well, so only the newest face stays searchable.
+    await this.forgetSavedFaces(userId, dto.type);
     await this.enrollments.update(
       { userId, type: dto.type, status: BiometricStatus.ACTIVE },
       { status: BiometricStatus.REVOKED, revokedAt: new Date() },
@@ -160,12 +166,36 @@ export class BiometricsService {
         consentId: dto.consentId,
         modelVersion: this.requireProvider().name,
         qualityScore,
-        metadata: dto.metadata ?? null,
+        metadata: searchRef ? { ...(dto.metadata ?? {}), searchRef } : (dto.metadata ?? null),
       }),
     );
 
     this.logger.log(`Biometric ${dto.type} enrolled for user ${userId}`);
     return enrollment;
+  }
+
+  /**
+   * Deletes, at the vendor, the faces saved in its search index for this customer's ACTIVE
+   * enrollments. Best effort: the local revocation is what actually stops a payment (a face-only
+   * payment also requires an active enrollment), so a vendor outage never blocks a revocation.
+   */
+  private async forgetSavedFaces(userId: string, type?: BiometricType): Promise<void> {
+    const provider = this.provider;
+    if (!provider?.forgetFace) return;
+    const active = await this.enrollments.find({
+      where: { userId, status: BiometricStatus.ACTIVE, ...(type ? { type } : {}) },
+    });
+    for (const enrollment of active) {
+      const ref = (enrollment.metadata as { searchRef?: unknown } | null)?.searchRef;
+      if (typeof ref !== 'string') continue;
+      try {
+        await provider.forgetFace(ref);
+      } catch (error) {
+        this.logger.error(
+          `Could not delete the saved face for user ${userId} at the vendor: ${String(error)}`,
+        );
+      }
+    }
   }
 
   /**
@@ -203,12 +233,14 @@ export class BiometricsService {
     const bestMatch = matches[0]; // Already sorted by similarity in DiditProvider
 
     // Find user by userId or vendorData
+    // The vendor hands back the label we saved with the face (the customer's id). Only a real id
+    // is looked up: anything else is not ours and must never reach the database query.
+    const claimedId = [bestMatch.userId, bestMatch.vendorData].find(
+      (v): v is string => typeof v === 'string' && UUID_PATTERN.test(v),
+    );
     let user: User | null = null;
-    if (bestMatch.userId) {
-      user = await this.users.findOne({ where: { id: bestMatch.userId } });
-    } else if (bestMatch.vendorData) {
-      // Try to parse vendor data as user ID (stored during enrollment)
-      user = await this.users.findOne({ where: { id: bestMatch.vendorData } });
+    if (claimedId) {
+      user = await this.users.findOne({ where: { id: claimedId } });
     }
 
     if (!user) {
@@ -228,6 +260,20 @@ export class BiometricsService {
         scores: { matchScore: 0, livenessScore: 0, spoofScore: 0, qualityScore: 0 },
         reason: 'Too many failed attempts',
       };
+    }
+
+    // The face must still be ENROLLED here. The vendor may keep a face after a customer removes
+    // it (or after an enrolment from before this feature), and that must never allow a payment.
+    const enrolled = await this.enrollments.count({
+      where: { userId: user.id, type: BiometricType.FACE, status: BiometricStatus.ACTIVE },
+    });
+    if (enrolled === 0) {
+      return this.logAttempt(null, BiometricType.FACE, AttemptResult.DENIED, context, {
+        matchScore: 0,
+        livenessScore: 0,
+        spoofScore: 0,
+        qualityScore: 0,
+      });
     }
 
     // Check consent
@@ -400,6 +446,7 @@ export class BiometricsService {
    * Revoke a specific biometric enrollment.
    */
   async revokeEnrollment(userId: string, dto: RevokeBiometricDto): Promise<void> {
+    await this.forgetSavedFaces(userId, dto.type);
     await this.enrollments.update(
       { userId, type: dto.type, status: BiometricStatus.ACTIVE },
       { status: BiometricStatus.REVOKED, revokedAt: new Date() },

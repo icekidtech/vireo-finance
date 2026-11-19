@@ -33,6 +33,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
+        prefix: config.get<string>('redis.queuePrefix') || 'bull',
         connection: {
           host: config.get<string>('redis.host') ?? 'localhost',
           port: config.get<number>('redis.port') ?? 6379,

@@ -11,12 +11,19 @@ export interface DiditConfig {
   apiKey: string;
   baseUrl: string;
   timeoutMs: number;
+  /**
+   * Also save each enrolled face in Didit's face search index, so a customer can be found by face
+   * alone (paying with no phone number). Off by default: otherwise Didit keeps no image at all.
+   */
+  indexFaces?: boolean;
 }
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TEMPLATES = 5;
 
 interface LivenessResponse {
+  /** The id of the saved request when `save_api_request` was true. */
+  request_id?: string;
   liveness?: {
     status?: string;
     score?: number | null;
@@ -34,6 +41,8 @@ interface FaceMatchResponse {
  *
  * - Every call sets save_api_request=false, so Didit keeps no copy of the
  *   customer's images. The only stored copy is ours, AES-GCM encrypted.
+ *   The one exception is `indexFaces` (paying by face alone): then the enrolment check is saved so
+ *   the face is in Didit's search index, labelled with the customer's id and deletable again.
  * - The "template" is the enrolled selfie (Didit's face match has no stored
  *   template); it is only ever decrypted in memory to be sent for matching.
  * - Any vendor failure throws; nothing here can return passing scores on error.
@@ -63,16 +72,53 @@ export class DiditProvider implements BiometricProvider {
 
   constructor(private readonly cfg: DiditConfig) {}
 
-  async enroll(type: BiometricType, sampleBase64: string): Promise<ProviderEnrollment> {
+  async enroll(
+    type: BiometricType,
+    sampleBase64: string,
+    context?: { userId: string },
+  ): Promise<ProviderEnrollment> {
     this.assertFace(type);
     const image = this.decode(sampleBase64);
-    const liveness = await this.checkLiveness(image);
+    // When face search is on, the liveness check is made as a SAVED request labelled with the
+    // customer's id: that single call both checks the face and puts it in Didit's search index.
+    const indexFor = this.cfg.indexFaces && context?.userId ? context.userId : undefined;
+    const liveness = await this.checkLiveness(image, indexFor);
     if (liveness.declined) {
       throw new BadRequestException(
         'We could not confirm a live face. Face the camera in good light and try again.',
       );
     }
-    return { template: image.toString('base64'), qualityScore: liveness.quality };
+    if (indexFor && !liveness.requestId) {
+      // Without the saved id the face could never be deleted again, so do not keep a copy at all.
+      throw new ServiceUnavailableException('Biometric verification is not available');
+    }
+    return {
+      template: image.toString('base64'),
+      qualityScore: liveness.quality,
+      searchRef: indexFor ? liveness.requestId : undefined,
+    };
+  }
+
+  /** Deletes a face saved in Didit's search index. A face that is already gone counts as done. */
+  async forgetFace(searchRef: string): Promise<void> {
+    if (!/^[0-9a-f-]{36}$/i.test(searchRef)) {
+      throw new BadRequestException('Invalid saved face reference');
+    }
+    let response: Response;
+    try {
+      response = await fetch(`${this.cfg.baseUrl}/session/${searchRef}/delete/`, {
+        method: 'DELETE',
+        headers: { 'x-api-key': this.cfg.apiKey },
+        signal: AbortSignal.timeout(this.cfg.timeoutMs),
+      });
+    } catch (error) {
+      this.logger.error(`Didit delete network error: ${String(error)}`);
+      throw new ServiceUnavailableException('Biometric verification is not available');
+    }
+    this.logger.log(`Didit session delete -> ${response.status}`);
+    if (!response.ok && response.status !== 404) {
+      throw new ServiceUnavailableException('Biometric verification is not available');
+    }
   }
 
   async verify(
@@ -114,9 +160,14 @@ export class DiditProvider implements BiometricProvider {
     };
   }
 
-  private async checkLiveness(image: Buffer) {
+  private async checkLiveness(image: Buffer, saveForUserId?: string) {
     const body = this.form(image, 'user_image');
-    body.append('save_api_request', 'false');
+    if (saveForUserId) {
+      body.append('save_api_request', 'true');
+      body.append('vendor_data', saveForUserId);
+    } else {
+      body.append('save_api_request', 'false');
+    }
     const res = (await this.post('passive-liveness', body)) as LivenessResponse;
     const l = res.liveness;
     if (!l || typeof l.status !== 'string') {
@@ -125,6 +176,7 @@ export class DiditProvider implements BiometricProvider {
     const risks = (l.warnings ?? []).map((w) => w.risk ?? w.tag ?? '');
     const score = clamp(l.score ?? 0);
     return {
+      requestId: typeof res.request_id === 'string' ? res.request_id : undefined,
       declined: l.status !== 'Approved',
       attack: risks.includes('LIVENESS_FACE_ATTACK'),
       multipleFaces: risks.includes('MULTIPLE_FACES_DETECTED'),

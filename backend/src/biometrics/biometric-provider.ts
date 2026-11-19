@@ -8,6 +8,11 @@ export interface ProviderEnrollment {
   template: string;
   /** 0-100 capture quality; the service rejects enrollments below its minimum. */
   qualityScore: number;
+  /**
+   * Set when the vendor also saved the face in ITS search index (needed to find a customer by face
+   * alone). It is the vendor's id for that saved face, kept so it can be deleted on revocation.
+   */
+  searchRef?: string;
 }
 
 export interface ProviderVerification {
@@ -38,7 +43,12 @@ export interface FaceSearchResult {
  */
 export interface BiometricProvider {
   readonly name: string;
-  enroll(type: BiometricType, sampleBase64: string): Promise<ProviderEnrollment>;
+  /** `context.userId` is only used to label a face saved in the vendor's search index. */
+  enroll(
+    type: BiometricType,
+    sampleBase64: string,
+    context?: { userId: string },
+  ): Promise<ProviderEnrollment>;
   verify(
     type: BiometricType,
     sampleBase64: string,
@@ -49,4 +59,6 @@ export interface BiometricProvider {
    * Optional - not all providers support this.
    */
   searchFace?(sampleBase64: string): Promise<FaceSearchResult[]>;
+  /** Deletes a face the vendor saved in its search index (the `searchRef` from enrollment). */
+  forgetFace?(searchRef: string): Promise<void>;
 }

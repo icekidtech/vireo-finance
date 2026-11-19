@@ -44,7 +44,10 @@ import { BIOMETRIC_PROVIDER, BiometricProvider } from './biometric-provider';
               'DIDIT_KEY_TYPE=sandbox: Didit approves EVERY image (even a blank one). Face results are not real; use a live key to test matching.',
             );
           }
-          return new DiditProvider(didit);
+          // Faces are saved in Didit's search index ONLY when paying by face alone is switched on.
+          // Otherwise Didit keeps no image of any customer.
+          const indexFaces = config.get<boolean>('biometrics.faceOnly.enabled') === true;
+          return new DiditProvider({ ...didit, indexFaces });
         }
         throw new Error(`BIOMETRIC_PROVIDER "${name}" has no adapter in this build`);
       },

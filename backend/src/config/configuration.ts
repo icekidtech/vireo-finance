@@ -31,6 +31,12 @@ export interface AppConfig {
     username: string;
     password: string;
     tls: boolean;
+    /**
+     * Name that every queue key starts with. Give each environment its own (production, local,
+     * staging): copies of the app that share one Redis would otherwise take each other's jobs, and
+     * an older copy would process (or silently skip) a webhook meant for production.
+     */
+    queuePrefix: string;
   };
   paga: {
     businessBaseUrl: string;
@@ -170,6 +176,7 @@ export default (): AppConfig => ({
     username: (process.env.REDIS_USERNAME ?? '').trim(),
     password: process.env.REDIS_PASSWORD ?? '',
     tls: process.env.REDIS_TLS === 'true' || process.env.REDIS_TLS === '1',
+    queuePrefix: (process.env.REDIS_QUEUE_PREFIX ?? '').trim() || 'bull',
   },
   paga: {
     businessBaseUrl: process.env.PAGA_BUSINESS_BASE_URL ?? '',
