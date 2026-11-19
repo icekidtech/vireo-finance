@@ -6,8 +6,6 @@ import {
   EmailOtpRequestDto,
   EmailOtpVerifyDto,
   LoginDto,
-  OtpRequestDto,
-  OtpVerifyDto,
   RegisterDeviceDto,
   RegisterDto,
 } from './dto/auth.dto';
@@ -24,16 +22,6 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto);
-  }
-
-  @Post('otp/request')
-  requestOtp(@Body() dto: OtpRequestDto) {
-    return this.auth.requestOtp(dto.phone);
-  }
-
-  @Post('otp/verify')
-  verifyOtp(@Body() dto: OtpVerifyDto) {
-    return this.auth.verifyOtp(dto.phone, dto.code);
   }
 
   @Post('email-otp/request')

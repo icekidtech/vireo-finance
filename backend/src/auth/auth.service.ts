@@ -1,5 +1,8 @@
 import {
   BadRequestException,
+  ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -25,13 +28,13 @@ import {
 } from '../common/enums';
 import { User } from '../users/user.entity';
 import { Device } from './device.entity';
-import { PhoneOtp } from './phone-otp.entity';
 import { EmailOtp } from './email-otp.entity';
 import { LoginDto, RegisterDeviceDto, RegisterDto } from './dto/auth.dto';
 import { AppleAttestService } from './attestation/apple-attest.service';
 import { GooglePlayIntegrityService } from './attestation/google-play-integrity.service';
 
 const MAX_OTP_ATTEMPTS = 5;
+const EMAIL_OTP_COOLDOWN_MS = 30_000;
 
 @Injectable()
 export class AuthService {
@@ -41,7 +44,6 @@ export class AuthService {
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Device) private readonly devices: Repository<Device>,
-    @InjectRepository(PhoneOtp) private readonly otps: Repository<PhoneOtp>,
     @InjectRepository(EmailOtp) private readonly emailOtps: Repository<EmailOtp>,
     private readonly accounts: AccountsService,
     private readonly paga: PagaService,
@@ -54,28 +56,20 @@ export class AuthService {
   ) {}
 
   /* ------------------------------------------------------------------ */
-  /* Register: a phone number (one-time-code login), email + password,   */
-  /* or both                                                              */
+  /* Register with an email and a phone number. Sign-in is by a one-time  */
+  /* code sent to the email (a password is optional).                     */
   /* ------------------------------------------------------------------ */
 
   async register(dto: RegisterDto) {
-    const email = dto.email?.trim().toLowerCase() || undefined;
-    const phone = dto.phone ? normalizePhone(dto.phone) : '';
-    if (!phone && !email) {
-      throw new BadRequestException('Provide a phone number, or an email and password');
-    }
-    if (email && !dto.password) {
-      throw new BadRequestException('A password is required when registering with an email');
-    }
-    if (dto.password && !email) {
-      throw new BadRequestException('An email is required when a password is set');
-    }
+    const email = dto.email.trim().toLowerCase();
+    const phone = normalizePhone(dto.phone);
 
-    const existing =
-      (email ? await this.users.findOne({ where: { email } }) : null) ??
-      (phone ? await this.users.findOne({ where: { phone } }) : null);
+    const existing = await this.users.findOne({ where: { email } });
     if (existing) {
       return { user: toPublicUser(existing), created: false };
+    }
+    if (await this.users.findOne({ where: { phone } })) {
+      throw new ConflictException('This phone number is already registered to another account');
     }
 
     const passwordHash = dto.password ? await bcrypt.hash(dto.password, 10) : null;
@@ -86,7 +80,7 @@ export class AuthService {
           phone,
           name: dto.name.trim(),
           handle: dto.handle?.toLowerCase() ?? null,
-          email: email ?? null,
+          email,
           passwordHash,
           dateOfBirth: dto.dateOfBirth?.trim() ?? null,
           kycTier: 0,
@@ -160,78 +154,22 @@ export class AuthService {
     return { accessToken: this.issueToken(user.id), user: toPublicUser(user) };
   }
 
-  /* ------------------------------------------------------------------ */
-  /* Login with a one-time code sent to the phone                         */
-  /* ------------------------------------------------------------------ */
-
-  async requestOtp(phoneInput: string) {
-    const phone = normalizePhone(phoneInput);
-    const user = await this.users.findOne({ where: { phone } });
-    if (!user) {
-      throw new NotFoundException('User is not registered');
+  /** Sends the signed-in user a fresh one-time code by email, for sensitive changes such as resetting the PIN. */
+  async sendCodeToUser(userId: string) {
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.email) {
+      throw new BadRequestException('Add an email address to your account to receive a code');
     }
-    if (user.status !== UserStatus.ACTIVE) {
-      throw new UnauthorizedException('User is not active');
-    }
-
-    const code = randomInt(100000, 1000000).toString();
-    const ttl = this.config.get<number>('otp.ttlSeconds') ?? 300;
-    await this.otps.save(
-      this.otps.create({
-        phone,
-        codeHash: this.hashOtp(phone, code),
-        expiresAt: new Date(Date.now() + ttl * 1000),
-      }),
-    );
-
-    // Until an SMS gateway exists the code is written to the server log, only
-    // when OTP_LOG_CODE is set. It is never returned in the API response.
-    if (this.config.get<boolean>('otp.logCode')) {
-      this.logger.warn(`OTP for ${phone}: ${code} (expires in ${ttl}s)`);
-    }
-    return { expiresIn: ttl };
+    return this.requestEmailOtp(user.email);
   }
 
-  /** Proves the signed-in user owns their phone right now (a fresh one-time code), for sensitive changes such as resetting the PIN. */
+  /** Proves the signed-in user owns their email right now (a fresh one-time code). */
   async consumeOtpForUser(userId: string, code: string): Promise<void> {
     const user = await this.users.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-    await this.consumeOtp(user.phone, code);
-  }
-
-  private async consumeOtp(phone: string, code: string): Promise<void> {
-    const otp = await this.otps.findOne({
-      where: { phone, consumedAt: IsNull() },
-      order: { createdAt: 'DESC' },
-    });
-    if (!otp || otp.expiresAt.getTime() < Date.now()) {
-      throw new BadRequestException('OTP is invalid or expired');
-    }
-    if (otp.attempts >= MAX_OTP_ATTEMPTS) {
-      throw new BadRequestException('Too many OTP attempts');
-    }
-    if (otp.codeHash !== this.hashOtp(phone, code)) {
-      otp.attempts += 1;
-      await this.otps.save(otp);
-      throw new BadRequestException('OTP is invalid or expired');
-    }
-    otp.consumedAt = new Date();
-    await this.otps.save(otp);
-  }
-
-  async verifyOtp(phoneInput: string, code: string) {
-    const phone = normalizePhone(phoneInput);
-    await this.consumeOtp(phone, code);
-
-    const user = await this.users.findOne({ where: { phone } });
-    if (!user) {
-      throw new NotFoundException('User is not registered');
-    }
-    if (user.status !== UserStatus.ACTIVE) {
-      throw new UnauthorizedException('Account is not active');
-    }
-
-    return { accessToken: this.issueToken(user.id), user: toPublicUser(user) };
+    if (!user.email) throw new BadRequestException('Verification code is invalid or expired');
+    await this.consumeEmailOtp(user.email, code);
   }
 
   /* ------------------------------------------------------------------ */
@@ -246,6 +184,15 @@ export class AuthService {
     }
     if (user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Account is not active');
+    }
+
+    // One code per half minute per email: stops anyone using this endpoint to spam an inbox.
+    const latest = await this.emailOtps.findOne({ where: { email }, order: { createdAt: 'DESC' } });
+    if (latest?.createdAt && Date.now() - latest.createdAt.getTime() < EMAIL_OTP_COOLDOWN_MS) {
+      throw new HttpException(
+        'Please wait a moment before requesting another code',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
 
     const code = randomInt(100000, 1000000).toString();
@@ -384,14 +331,6 @@ export class AuthService {
 
   issueToken(userId: string): string {
     return this.jwt.sign({ sub: userId });
-  }
-
-  private hashOtp(phone: string, code: string): string {
-    const secret = this.config.get<string>('jwt.secret');
-    if (!secret) {
-      throw new Error('JWT secret is not configured');
-    }
-    return hmacSha256Hex(secret, `${phone}:${code}`);
   }
 
   /** Staff bootstrap: phones listed in ADMIN_PHONES register with the admin role. */

@@ -14,10 +14,16 @@ const PHONE_PATTERN = /^\+?[0-9]{10,15}$/;
 const HANDLE_PATTERN = /^[a-zA-Z0-9_]{3,20}$/;
 
 export class RegisterDto {
-  /** Email + password sign-in. Optional: a phone number alone signs in with a one-time code. */
-  @IsOptional()
+  /** Where one-time sign-in codes are sent. */
   @IsEmail()
-  email?: string;
+  email: string;
+
+  /** Stored on the profile (and used to open the payment account). Codes are never sent here. */
+  @IsString()
+  @Matches(PHONE_PATTERN, { message: 'phone must be 10-15 digits, optional leading +' })
+  phone: string;
+
+  /** Optional: only for API users who also want email + password login. */
 
   @IsOptional()
   @IsString()
@@ -27,11 +33,6 @@ export class RegisterDto {
   @IsString()
   @Length(2, 120)
   name: string;
-
-  @IsOptional()
-  @IsString()
-  @Matches(PHONE_PATTERN, { message: 'phone must be 10-15 digits, optional leading +' })
-  phone?: string;
 
   @IsOptional()
   @IsString()
@@ -52,25 +53,9 @@ export class LoginDto {
   password: string;
 }
 
-export class OtpRequestDto {
-  @IsString()
-  @Matches(PHONE_PATTERN)
-  phone: string;
-}
-
 export class EmailOtpRequestDto {
   @IsEmail()
   email: string;
-}
-
-export class OtpVerifyDto {
-  @IsString()
-  @Matches(PHONE_PATTERN)
-  phone: string;
-
-  @IsString()
-  @Length(6, 6)
-  code: string;
 }
 
 export class EmailOtpVerifyDto {
