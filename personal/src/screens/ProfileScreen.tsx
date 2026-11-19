@@ -1,3 +1,4 @@
+import PhoneEditor from '../components/PhoneEditor';
 import { Text, StyleSheet, View } from 'react-native';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -36,6 +37,11 @@ export default function ProfileScreen({ navigation }: Props) {
           {user?.phone}
         </Text>
       </View>
+
+      <SectionTitle>Contact</SectionTitle>
+      <Card style={{ paddingVertical: spacing.sm }}>
+        <PhoneEditor />
+      </Card>
 
       <SectionTitle>Verification</SectionTitle>
       <Card style={{ paddingVertical: spacing.sm }}>

@@ -1,7 +1,14 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AccountsService } from '../accounts/accounts.service';
+import { normalizeNigerianPhone } from '../common/phone';
 import { PagaService } from '../paga/paga.service';
 import { User } from '../users/user.entity';
 import { Merchant } from './merchant.entity';
@@ -64,7 +71,7 @@ export class MerchantDepositService {
       userId,
       referenceId: merchant.id,
       name: owner.name,
-      phone: owner.phone,
+      phone: pagaPhone(owner.phone),
     });
     const saved = await this.accounts.createVirtualAccount(
       userId,
@@ -85,4 +92,18 @@ export class MerchantDepositService {
       accountName: merchant.businessName,
     };
   }
+}
+
+/**
+ * Paga rejects a malformed number with a generic error that the app can only show as "temporarily
+ * unavailable". Check it here so the person is told what to fix.
+ */
+function pagaPhone(phone: string | null | undefined): string {
+  const normalized = normalizeNigerianPhone(phone);
+  if (!normalized) {
+    throw new BadRequestException(
+      'The phone number on your account is not a valid Nigerian number, so we cannot open your account number yet. Open Account and update your phone number, then try again.',
+    );
+  }
+  return normalized;
 }

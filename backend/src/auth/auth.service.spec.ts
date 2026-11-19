@@ -185,6 +185,21 @@ describe('AuthService', () => {
       expect(dataSource.transaction).not.toHaveBeenCalled();
     });
 
+    it('stores the phone number in one canonical form', async () => {
+      usersRepo.findOne.mockResolvedValue(null);
+      const saved = txn();
+      await service.register({ email: 'a@example.com', phone: '08163790777', name: 'Ada Obi' });
+      expect(saved().phone).toBe('+2348163790777');
+    });
+
+    it('refuses a phone number with a missing digit', async () => {
+      usersRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.register({ email: 'a@example.com', phone: '0816379077', name: 'Ada Obi' }),
+      ).rejects.toThrow('valid Nigerian phone number');
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
     it('refuses a phone number that belongs to a different account', async () => {
       usersRepo.findOne.mockImplementation(async ({ where }: any) =>
         where.phone ? mockUser : null,
@@ -194,6 +209,48 @@ describe('AuthService', () => {
       ).rejects.toThrow('already registered');
       expect(dataSource.transaction).not.toHaveBeenCalled();
     });
+  });
+
+  describe('updatePhone', () => {
+    it('corrects a number with a missing digit and stores it canonically', async () => {
+      const user = { ...mockUser, phone: '0816379077' };
+      usersRepo.findOne.mockImplementation(async ({ where }: any) =>
+        where.id === 'user-1' ? user : null,
+      );
+      usersRepo.save.mockImplementation(async (u: any) => u);
+      const result = await service.updatePhone('user-1', '08163790777');
+      expect(result.phone).toBe('+2348163790777');
+      expect(usersRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ phone: '+2348163790777' }),
+      );
+    });
+
+    it('refuses an invalid number and saves nothing', async () => {
+      await expect(service.updatePhone('user-1', '0816379077')).rejects.toThrow(
+        'valid Nigerian phone number',
+      );
+      expect(usersRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('refuses a number another account already uses, in any spelling', async () => {
+      usersRepo.findOne.mockImplementation(async ({ where }: any) =>
+        where.id === 'user-1' ? mockUser : { ...mockUser, id: 'other', phone: '08163790777' },
+      );
+      await expect(service.updatePhone('user-1', '+2348163790777')).rejects.toThrow(
+        'already registered',
+      );
+      expect(usersRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  it('treats an older spelling of a registered number as the same number at sign-up', async () => {
+    // The only account found is one that stored the number the way it was typed: 08163790777.
+    usersRepo.findOne.mockImplementation(async ({ where }: any) =>
+      where.phone ? { ...mockUser, phone: '08163790777' } : null,
+    );
+    await expect(
+      service.register({ email: 'new@example.com', phone: '+2348163790777', name: 'Bob' }),
+    ).rejects.toThrow('already registered');
   });
 
   it('has no phone one-time-code login', () => {

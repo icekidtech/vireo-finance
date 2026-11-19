@@ -9,8 +9,8 @@ import {
   MinLength,
 } from 'class-validator';
 import { DevicePlatform, SignatureAlgorithm } from '../../common/enums';
+import { NG_PHONE_PATTERN } from '../../common/phone';
 
-const PHONE_PATTERN = /^\+?[0-9]{10,15}$/;
 const HANDLE_PATTERN = /^[a-zA-Z0-9_]{3,20}$/;
 
 export class RegisterDto {
@@ -20,7 +20,9 @@ export class RegisterDto {
 
   /** Stored on the profile (and used to open the payment account). Codes are never sent here. */
   @IsString()
-  @Matches(PHONE_PATTERN, { message: 'phone must be 10-15 digits, optional leading +' })
+  @Matches(NG_PHONE_PATTERN, {
+    message: 'Enter a valid Nigerian phone number, for example 08012345678',
+  })
   phone: string;
 
   /** Optional: only for API users who also want email + password login. */
@@ -42,6 +44,14 @@ export class RegisterDto {
   @IsOptional()
   @IsDateString({}, { message: 'dateOfBirth must be a valid ISO date string (YYYY-MM-DD)' })
   dateOfBirth?: string;
+}
+
+export class UpdatePhoneDto {
+  @IsString()
+  @Matches(NG_PHONE_PATTERN, {
+    message: 'Enter a valid Nigerian phone number, for example 08012345678',
+  })
+  phone: string;
 }
 
 export class LoginDto {

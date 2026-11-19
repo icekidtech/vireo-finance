@@ -4,7 +4,7 @@ import type { RootStackParamList } from '../navigation';
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
-import { errorMessage } from '../lib/format';
+import { errorMessage, isNigerianPhone } from '../lib/format';
 import { AuthLayout, Button, ErrorBanner, Field, Screen } from '../components/ui';
 import Logo from '../components/Logo';
 import PinSetup from '../components/PinSetup';
@@ -131,14 +131,14 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
               <Field label="EMAIL" placeholder="ada@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" hint={isSignIn ? 'We will email you a 6-digit code.' : 'We email your sign-in codes here.'} />
               {!isSignIn && (
                 <>
-                  <Field label="PHONE" placeholder="+2348012345678" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoCapitalize="none" autoComplete="tel" hint="Saved on your profile. We never text you a code." />
+                  <Field label="PHONE" placeholder="08012345678" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoCapitalize="none" autoComplete="tel" hint={phone.trim() && !isNigerianPhone(phone) ? 'Enter a valid Nigerian number, e.g. 08012345678 (11 digits).' : 'Saved on your profile. We never text you a code.'} />
                   <Field label="$HANDLE (OPTIONAL)" placeholder="ada" value={handle} onChangeText={setHandle} autoCapitalize="none" hint="3–20 letters, numbers or underscores. Friends can pay you by handle." />
                 </>
               )}
               <Button
                 title={isSignIn ? 'Send code' : 'Continue'}
                 loading={loading}
-                disabled={!email.includes('@') || (!isSignIn && (!firstName.trim() || !lastName.trim() || phone.replace(/\D/g, '').length < 10))}
+                disabled={!email.includes('@') || (!isSignIn && (!firstName.trim() || !lastName.trim() || !isNigerianPhone(phone)))}
                 onPress={onContinue}
               />
             </>

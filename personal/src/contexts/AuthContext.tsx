@@ -12,6 +12,8 @@ interface AuthContextType {
   user: PublicUser | null;
   isLoading: boolean;
   login: (token: string, user: PublicUser) => void;
+  /** Replaces the saved user after the profile changes (for example a corrected phone number). */
+  updateUser: (user: PublicUser) => void;
   logout: () => void;
 }
 
@@ -57,6 +59,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void storage.setItem(USER_KEY, JSON.stringify(nextUser ?? null));
   }, []);
 
+  const updateUser = useCallback((nextUser: PublicUser) => {
+    setUser(nextUser);
+    void storage.setItem(USER_KEY, JSON.stringify(nextUser));
+  }, []);
+
   const logout = useCallback(() => {
     clearSessionState(); // forget the saved screen and drafts so the next sign-in starts clean
     setTokenState(null);
@@ -73,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout]);
 
   return (
-    <AuthContext.Provider value={{ token, user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ token, user, isLoading, login, updateUser, logout }}>
       {children}
     </AuthContext.Provider>
   );

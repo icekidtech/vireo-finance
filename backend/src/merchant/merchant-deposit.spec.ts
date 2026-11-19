@@ -1,8 +1,19 @@
-import { BadGatewayException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { MerchantDepositService } from './merchant-deposit.service';
 
 function setup(
-  opts: { merchant?: unknown; existing?: unknown; pagaFails?: boolean; tier?: number } = {},
+  opts: {
+    merchant?: unknown;
+    existing?: unknown;
+    pagaFails?: boolean;
+    tier?: number;
+    phone?: string;
+  } = {},
 ) {
   const merchant =
     opts.merchant === undefined
@@ -13,7 +24,7 @@ function setup(
     findOne: jest.fn(async () => ({
       id: 'u1',
       name: 'Ada Obi',
-      phone: '+2348012345678',
+      phone: opts.phone ?? '+2348012345678',
       kycTier: opts.tier ?? 1,
     })),
   };
@@ -80,5 +91,20 @@ describe('MerchantDepositService', () => {
     const { service, paga } = setup({ tier: 0 });
     await expect(service.getDepositAccount('u1')).rejects.toThrow(ForbiddenException);
     expect(paga.createVirtualAccount).not.toHaveBeenCalled();
+  });
+
+  it('refuses an invalid owner phone number without calling Paga', async () => {
+    const { service, paga } = setup({ phone: '0816379077' });
+    await expect(service.getDepositAccount('u1')).rejects.toThrow(BadRequestException);
+    await expect(service.getDepositAccount('u1')).rejects.toThrow(/not a valid Nigerian number/);
+    expect(paga.createVirtualAccount).not.toHaveBeenCalled();
+  });
+
+  it('sends Paga the canonical number', async () => {
+    const { service, paga } = setup({ phone: '08012345678' });
+    await service.getDepositAccount('u1');
+    expect(paga.createVirtualAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ phone: '+2348012345678' }),
+    );
   });
 });

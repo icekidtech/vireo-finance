@@ -83,3 +83,8 @@ export function splitFullName(fullName: string | null | undefined): { firstName:
   const parts = (fullName ?? '').trim().split(/\s+/).filter(Boolean);
   return { firstName: parts[0] ?? '', lastName: parts.slice(1).join(' ') };
 }
+
+/** A Nigerian mobile number: 08012345678, 8012345678, 2348012345678 or +2348012345678. */
+export function isNigerianPhone(value: string): boolean {
+  return /^(?:\+?234|0)?[789][01]\d{8}$/.test(value.replace(/[\s()-]/g, ''));
+}

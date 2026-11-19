@@ -94,6 +94,12 @@ export class VireoApi {
     return data;
   }
 
+  /** Corrects the number on the account (it must be a valid Nigerian mobile number). */
+  async updatePhone(phone: string) {
+    const { data } = await this.client.patch<PublicUser>('/auth/me/phone', { phone });
+    return data;
+  }
+
   async getProfile() {
     const { data } = await this.client.get<PublicUser>('/auth/me');
     return data;

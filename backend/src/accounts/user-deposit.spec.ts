@@ -1,9 +1,13 @@
-import { BadGatewayException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import { UserDepositService } from './user-deposit.service';
 
-function setup(o: { existing?: unknown; pagaFails?: boolean } = {}) {
+function setup(o: { existing?: unknown; pagaFails?: boolean; phone?: string } = {}) {
   const users = {
-    findOne: jest.fn(async () => ({ id: 'u1', name: 'Ada Obi', phone: '+2348012345678' })),
+    findOne: jest.fn(async () => ({
+      id: 'u1',
+      name: 'Ada Obi',
+      phone: o.phone ?? '+2348012345678',
+    })),
   };
   const accounts = {
     getWallet: jest.fn(async () => ({ id: 'w1' })),
@@ -55,5 +59,27 @@ describe('UserDepositService', () => {
     const { service, accounts } = setup({ pagaFails: true });
     await expect(service.getOrCreate('u1')).rejects.toThrow(BadGatewayException);
     expect(accounts.createVirtualAccount).not.toHaveBeenCalled();
+  });
+
+  // A number one digit short made Paga answer "'phone number' has an invalid value" and the app only
+  // showed "temporarily unavailable". It is now refused here, with a message, before Paga is called.
+  it('refuses an invalid phone number without calling Paga', async () => {
+    const { service, paga, accounts } = setup({ phone: '0816379077' });
+    await expect(service.getOrCreate('u1')).rejects.toThrow(BadRequestException);
+    await expect(service.getOrCreate('u1')).rejects.toThrow(/not a valid Nigerian number/);
+    expect(paga.createVirtualAccount).not.toHaveBeenCalled();
+    expect(accounts.createVirtualAccount).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['08012345678', '+2348012345678'],
+    ['8012345678', '+2348012345678'],
+    ['2348012345678', '+2348012345678'],
+  ])('sends Paga one canonical number for the stored %p', async (stored, sent) => {
+    const { service, paga } = setup({ phone: stored });
+    await service.getOrCreate('u1');
+    expect(paga.createVirtualAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ phone: sent }),
+    );
   });
 });

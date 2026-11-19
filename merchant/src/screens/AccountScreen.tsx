@@ -1,3 +1,4 @@
+import PhoneEditor from '../components/PhoneEditor';
 import { Text, StyleSheet, View } from 'react-native';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -60,7 +61,7 @@ export default function AccountScreen({ navigation }: Props) {
       <SectionTitle>You</SectionTitle>
       <Card>
         <ListRow title="Name" trailing={user?.name ?? '—'} />
-        <ListRow title="Phone" trailing={user?.phone ?? '—'} />
+        <PhoneEditor />
       </Card>
 
       <SectionTitle>Security</SectionTitle>

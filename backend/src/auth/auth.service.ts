@@ -13,12 +13,13 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
 import { randomInt } from 'crypto';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Not, Repository } from 'typeorm';
 import { AccountsService } from '../accounts/accounts.service';
 import { PagaService } from '../paga/paga.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailNotificationProvider } from '../notifications/providers/email.provider';
 import { hmacSha256Hex } from '../common/crypto';
+import { normalizeNigerianPhone, phoneVariants } from '../common/phone';
 import {
   DevicePlatform,
   DeviceStatus,
@@ -62,13 +63,16 @@ export class AuthService {
 
   async register(dto: RegisterDto) {
     const email = dto.email.trim().toLowerCase();
-    const phone = normalizePhone(dto.phone);
+    const phone = normalizeNigerianPhone(dto.phone);
+    if (!phone) {
+      throw new BadRequestException('Enter a valid Nigerian phone number, for example 08012345678');
+    }
 
     const existing = await this.users.findOne({ where: { email } });
     if (existing) {
       return { user: toPublicUser(existing), created: false };
     }
-    if (await this.users.findOne({ where: { phone } })) {
+    if (await this.users.findOne({ where: { phone: In(phoneVariants(phone)) } })) {
       throw new ConflictException('This phone number is already registered to another account');
     }
 
@@ -323,6 +327,31 @@ export class AuthService {
     return toPublicDevice(device);
   }
 
+  /**
+   * Lets a signed-in user correct their phone number (for example one saved with a missing digit
+   * before numbers were validated). Codes go to the email, so the phone is only used for the
+   * payment account; it is still checked for format and for use by anyone else.
+   */
+  async updatePhone(userId: string, phoneInput: string) {
+    const phone = normalizeNigerianPhone(phoneInput);
+    if (!phone) {
+      throw new BadRequestException('Enter a valid Nigerian phone number, for example 08012345678');
+    }
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const taken = await this.users.findOne({
+      where: { phone: In(phoneVariants(phone)), id: Not(userId) },
+    });
+    if (taken) {
+      throw new ConflictException('This phone number is already registered to another account');
+    }
+
+    user.phone = phone;
+    await this.users.save(user);
+    return toPublicUser(user);
+  }
+
   /* ------------------------------------------------------------------ */
   /* Profile                                                              */
   /* ------------------------------------------------------------------ */
@@ -342,7 +371,9 @@ export class AuthService {
   /** Staff bootstrap: phones listed in ADMIN_PHONES register with the admin role. */
   private isAdminPhone(phone: string): boolean {
     if (!phone) return false;
-    const adminPhones = (this.config.get<string[]>('admin.phones') ?? []).map(normalizePhone);
+    const adminPhones = (this.config.get<string[]>('admin.phones') ?? []).map(
+      (p) => normalizeNigerianPhone(p) ?? normalizePhone(p),
+    );
     return adminPhones.includes(phone);
   }
 }
