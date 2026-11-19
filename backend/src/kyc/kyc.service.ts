@@ -236,6 +236,7 @@ export class KycService {
       lastName: dto.lastName.trim(),
       dateOfBirth: dto.dateOfBirth,
       selfie,
+      userId, // NEW: Pass user ID for deviceless payments (1:N face search)
     });
     if (!matched) return this.rejectAttempt(userId, BVN_PROVIDER, 'no_match', { bvnLast4: last4 });
 
