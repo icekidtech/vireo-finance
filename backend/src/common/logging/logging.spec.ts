@@ -180,3 +180,32 @@ describe('httpLogger (abandoned requests)', () => {
     expect(lines).toHaveLength(0);
   });
 });
+
+describe('httpLogger (upload size)', () => {
+  function logged(contentLength?: string) {
+    const lines: string[] = [];
+    const spy = jest.spyOn(Logger.prototype, 'log').mockImplementation(((msg: unknown) => {
+      lines.push(String(msg));
+    }) as never);
+    const res: any = Object.assign(new EventEmitter(), { statusCode: 200, send: jest.fn() });
+    const req: any = {
+      method: 'POST',
+      originalUrl: '/api/v1/merchants/terminal-payment/face',
+      ip: '::1',
+      headers: contentLength ? { 'content-length': contentLength } : {},
+    };
+    httpLogger()(req, res, () => undefined);
+    res.emit('finish');
+    spy.mockRestore();
+    return lines[0];
+  }
+
+  it('shows the size of a large upload', () => {
+    expect(logged('2411520')).toContain('size=2355KB');
+  });
+
+  it('stays quiet for small requests', () => {
+    expect(logged('812')).not.toContain('size=');
+    expect(logged()).not.toContain('size=');
+  });
+});

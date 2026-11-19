@@ -57,6 +57,10 @@ export function httpLogger(options: HttpLoggerOptions = {}) {
         user ? `user=${user}` : 'user=anon',
         `ip=${req.ip}`,
       ];
+      // Big uploads (photos) are what makes a request slow on a weak connection: show the size.
+      const bytes = Number(req.headers?.['content-length']);
+      if (Number.isFinite(bytes) && bytes >= 20_000)
+        parts.push(`size=${Math.round(bytes / 1024)}KB`);
       if (failureMessage) parts.push(`error="${failureMessage.slice(0, 300)}"`);
       if (options.logBodies && req.body && Object.keys(req.body).length > 0) {
         parts.push(`body=${JSON.stringify(redactForLog(req.body))}`);
