@@ -126,7 +126,7 @@ export class BiometricsController {
   /**
    * Identify user by face (1:N search) - TRUE DEVICELESS PAYMENT.
    * No identifier needed - just scan the face.
-   * 
+   *
    * This endpoint is typically called by merchant terminals, not end users.
    * It requires special merchant authentication (not implemented yet).
    */

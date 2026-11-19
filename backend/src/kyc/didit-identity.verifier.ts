@@ -76,13 +76,13 @@ export class DiditIdentityVerifier implements IdentityVerifier {
     body.append('last_name', input.lastName);
     body.append('date_of_birth', input.dateOfBirth);
     body.append('selfie', imageBlob(input.selfie), 'selfie.jpg');
-    
+
     // Store user ID for deviceless payments (1:N face search)
     if (input.userId) {
       body.append('vendor_data', input.userId);
       body.append('vendor_user_id', input.userId);
     }
-    
+
     return this.matched(
       await this.client.postForm<DatabaseValidationResponse>('database-validation', body),
       'nga_bank_verification_number',
