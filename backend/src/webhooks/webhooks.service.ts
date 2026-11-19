@@ -51,10 +51,16 @@ export class WebhooksService {
         }),
       );
     } catch (error) {
-      if (isUniqueViolation(error)) {
+      if (!isUniqueViolation(error)) throw error;
+      const existing = await this.events.findOne({ where: { providerEventId } });
+      if (!existing || existing.status !== PagaEventStatus.FAILED) {
+        // Already processed (or ignored): a repeat delivery changes nothing.
         return { status: 'SUCCESS', duplicate: true };
       }
-      throw error;
+      // This callback failed earlier. Paga retries callbacks, and one can be replayed once the cause
+      // is fixed, so it is processed again. The ledger's idempotency key makes a second credit
+      // impossible, so a retry can never pay the same deposit twice.
+      event = existing;
     }
 
     try {
@@ -102,7 +108,7 @@ export class WebhooksService {
       throw new Error(`No virtual account for ${accountNumber}`);
     }
 
-    const amount = parseAmountToMinor(String(body.amount));
+    const amount = parsePagaAmount(body.amount);
     await this.ledger.runInTransaction(async (manager) => {
       await this.ledger.post(manager, {
         idempotencyKey: `paga-event:${providerEventId}`,
@@ -211,6 +217,17 @@ function isPayoutUpdate(body: Record<string, unknown>): boolean {
       body.sessionId !== undefined ||
       body.responseCode !== undefined)
   );
+}
+
+/**
+ * Paga writes amounts the way people do, with thousands separators ("5,000.00"). The strict money
+ * parser rejects those, so the separators are removed first, but only when they are in the exact
+ * thousands shape: anything odd (for example "5,00.00") is still refused, never guessed at.
+ */
+export function parsePagaAmount(value: unknown): bigint {
+  const text = String(value ?? '').trim();
+  const plain = /^\d{1,3}(,\d{3})+(\.\d+)?$/.test(text) ? text.replace(/,/g, '') : text;
+  return parseAmountToMinor(plain);
 }
 
 function extractEventId(headers: IncomingHeaders, body: Record<string, unknown>): string | null {
