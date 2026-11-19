@@ -92,6 +92,10 @@ export class BiometricsController {
         status: e.status,
         qualityScore: e.qualityScore,
         modelVersion: e.modelVersion,
+        // Saved in the vendor's search index, so this face can be recognised without a phone number.
+        // Enrolments made before that was switched on are not, and must be redone.
+        faceOnlyReady:
+          typeof (e.metadata as { searchRef?: unknown } | null)?.searchRef === 'string',
         createdAt: e.createdAt,
         revokedAt: e.revokedAt,
       })),

@@ -215,3 +215,57 @@ describe('BiometricsService.identifyByFace (face alone)', () => {
     expect(enrollments.update).toHaveBeenCalled();
   });
 });
+
+describe('BiometricsService.status (what the apps are told)', () => {
+  function service(opts: {
+    keyType?: string;
+    faceOnly?: Record<string, unknown>;
+    provider?: boolean;
+  }) {
+    const config = {
+      get: (k: string) =>
+        k === 'biometrics.encryptionKey'
+          ? randomBytes(32).toString('base64')
+          : k === 'biometrics.didit.keyType'
+            ? (opts.keyType ?? 'live')
+            : k === 'biometrics.faceOnly'
+              ? opts.faceOnly
+              : undefined,
+    };
+    return new BiometricsService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      config as never,
+      (opts.provider === false ? null : { name: 'didit' }) as never,
+    );
+  }
+
+  it('says face-only payments are off by default', () => {
+    expect(service({}).status().faceOnly.available).toBe(false);
+  });
+
+  it('says they are available when switched on with a live checker, with the limit', () => {
+    const s = service({ faceOnly: { enabled: true, maxAmountMinor: 2000000 } }).status();
+    expect(s.faceOnly).toEqual({ available: true, maxAmount: '20000.00' });
+    expect(s.testMode).toBe(false);
+  });
+
+  it('says they are NOT available in vendor test mode, unless allowed on purpose', () => {
+    expect(
+      service({ keyType: 'sandbox', faceOnly: { enabled: true } }).status().faceOnly.available,
+    ).toBe(false);
+    expect(
+      service({ keyType: 'sandbox', faceOnly: { enabled: true, allowSandbox: true } }).status()
+        .faceOnly.available,
+    ).toBe(true);
+  });
+
+  it('says they are not available when biometrics are not configured at all', () => {
+    expect(
+      service({ provider: false, faceOnly: { enabled: true } }).status().faceOnly.available,
+    ).toBe(false);
+  });
+});

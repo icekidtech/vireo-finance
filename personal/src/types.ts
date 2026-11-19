@@ -128,6 +128,8 @@ export interface BiometricEnrollment {
   status: string;
   qualityScore: number | null;
   modelVersion?: string;
+  /** Saved so the face can be recognised without a phone number. Older enrolments are not. */
+  faceOnlyReady?: boolean;
   createdAt: string;
   revokedAt?: string | null;
 }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Text, StyleSheet } from 'react-native';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
-import { errorMessage, formatDateTime } from '../lib/format';
+import { errorMessage, formatDateTime, formatMoney } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
 import type { RootStackParamList } from '../navigation';
 import { Avatar, Button, Card, Empty, ErrorBanner, Header, ListRow, Loading, NoticeBanner, Screen, SectionTitle, StatusPill } from '../components/ui';
@@ -24,7 +24,12 @@ export default function BiometricsScreen({ navigation }: Props) {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const revoke = (kind: 'face') =>
-    showAlert('Remove your face enrollment?', 'You will no longer be able to pay with it.', [
+    showAlert(
+      'Remove your face enrollment?',
+      data?.status.faceOnly.available
+        ? 'You will no longer be able to pay with it. The copy kept by our verification provider is deleted too.'
+        : 'You will no longer be able to pay with it.',
+      [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
@@ -64,7 +69,11 @@ export default function BiometricsScreen({ navigation }: Props) {
     <Screen refreshing={refreshing} onRefresh={refresh}>
       <Header title="Face payments" onBack={() => navigation.goBack()} />
       <ErrorBanner message={error ?? actionError} />
-      <Text style={styles.lead}>Enroll your face to pay at a merchant till without your phone. You can delete it at any time.</Text>
+      <Text style={styles.lead}>
+        {data?.status.faceOnly.available
+          ? `Enroll your face to pay at a merchant till with just your face: no phone, no number. Merchants can charge your wallet for orders up to ${formatMoney(data.status.faceOnly.maxAmount)}, and you get a notification every time. You can delete it at any time.`
+          : 'Enroll your face to pay at a merchant till without your phone. You can delete it at any time.'}
+      </Text>
 
       <SectionTitle>Enrollments</SectionTitle>
       {active.length > 0 ? (
@@ -73,7 +82,9 @@ export default function BiometricsScreen({ navigation }: Props) {
             key={e.id}
             leading={<Avatar label={e.type} tone="accent" />}
             title="Face"
-            subtitle={`Enrolled ${formatDateTime(e.createdAt)}${e.qualityScore != null ? ` · quality ${e.qualityScore}` : ''}`}
+            subtitle={`Enrolled ${formatDateTime(e.createdAt)}${e.qualityScore != null ? ` · quality ${e.qualityScore}` : ''}${
+              data?.status.faceOnly.available ? (e.faceOnlyReady ? ' · ready for face-only payments' : ' · not ready for face-only payments') : ''
+            }`}
             trailing={<Button title="Remove" variant="danger" small onPress={() => revoke(e.type)} />}
           />
         ))
@@ -83,10 +94,16 @@ export default function BiometricsScreen({ navigation }: Props) {
       {data?.status.testMode ? (
         <NoticeBanner message="Test mode: the face checker is in sandbox, so it accepts any image. Results here are not real." />
       ) : null}
+      {data?.status.faceOnly.available && active.length > 0 && active.some((e) => !e.faceOnlyReady) ? (
+        <>
+          <NoticeBanner message="Your enrolled face was saved before face-only payments were switched on. Re-enroll it to pay with just your face." />
+          <Button title="Re-enroll now" variant="accent" onPress={() => navigation.navigate('BiometricEnroll')} style={{ marginTop: spacing.sm }} />
+        </>
+      ) : null}
       {data && !data.status.available ? (
         <NoticeBanner message="Face payments aren't available yet. We'll let you know when they are." />
       ) : null}
-      <Button title={active.some((e) => e.type === 'face') ? 'Re-enroll face' : 'Enroll your face'} variant="accent" disabled={!data?.status.available} onPress={() => navigation.navigate('BiometricEnroll')} style={{ marginTop: spacing.md }} />
+      <Button title={active.some((e) => e.type === 'face') ? 'Re-enroll face' : 'Enroll your face'} variant={active.length > 0 ? 'secondary' : 'accent'} disabled={!data?.status.available} onPress={() => navigation.navigate('BiometricEnroll')} style={{ marginTop: spacing.md }} />
 
       <SectionTitle>Recent verifications</SectionTitle>
       {data && data.attempts.length > 0 ? (

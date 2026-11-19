@@ -8,6 +8,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { formatMinor } from '../database/money';
 import { Repository, DataSource, MoreThan } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { BiometricEnrollment, BiometricType, BiometricStatus } from './biometric-enrollment.entity';
@@ -559,14 +560,32 @@ export class BiometricsService {
    */
   /** Both a vendor adapter and the template-encryption key must exist, checked before any work. */
   /** Whether enrollment and verification can run, so clients can say so up front. */
-  status(): { available: boolean; types: string[]; testMode: boolean } {
+  status(): {
+    available: boolean;
+    types: string[];
+    testMode: boolean;
+    /** Paying by face alone: whether a merchant can charge it right now, and the largest order. */
+    faceOnly: { available: boolean; maxAmount: string };
+  } {
     const available = !!this.provider && !!this.encryptionKey;
     // A sandbox vendor key approves every image, so clients must say that results are not real.
     const testMode = this.config.get<string>('biometrics.didit.keyType') === 'sandbox';
+    const faceOnly = this.config.get<{
+      enabled?: boolean;
+      allowSandbox?: boolean;
+      maxAmountMinor?: number;
+    }>('biometrics.faceOnly');
+    // Mirrors the till-side rule: switched on, and not blocked by the vendor's test mode.
+    const faceOnlyAvailable =
+      available && faceOnly?.enabled === true && (!testMode || faceOnly?.allowSandbox === true);
     return {
       available,
       types: available ? [BiometricType.FACE] : [],
       testMode: available && testMode,
+      faceOnly: {
+        available: faceOnlyAvailable,
+        maxAmount: formatMinor(BigInt(faceOnly?.maxAmountMinor ?? 2_000_000)),
+      },
     };
   }
 

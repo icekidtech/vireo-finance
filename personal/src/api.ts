@@ -291,7 +291,7 @@ export class VireoApi {
 
   /** Whether this server has a biometric vendor configured. */
   async biometricStatus() {
-    const { data } = await this.client.get<{ available: boolean; types: string[]; testMode: boolean }>('/biometrics/status');
+    const { data } = await this.client.get<{ available: boolean; types: string[]; testMode: boolean; faceOnly: { available: boolean; maxAmount: string } }>('/biometrics/status');
     return data;
   }
 

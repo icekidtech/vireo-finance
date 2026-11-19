@@ -37,6 +37,8 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
   // null while checking; false when the server has no biometric vendor set up.
   const [available, setAvailable] = useState<boolean | null>(null);
   const [testMode, setTestMode] = useState(false);
+  // Whether the server lets a face alone pay (and up to how much); until it says so, it does not.
+  const [faceOnly, setFaceOnly] = useState<{ available: boolean; maxAmount: string }>({ available: false, maxAmount: '0' });
 
   useEffect(() => {
     api
@@ -44,6 +46,7 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
       .then((s) => {
         setAvailable(s.available);
         setTestMode(s.testMode);
+        setFaceOnly(s.faceOnly);
       })
       .catch(() => setAvailable(false));
   }, []);
@@ -170,13 +173,17 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
 
       {mode === 'deviceless' ? (
         <>
+          {!faceOnly.available && available !== null ? (
+            <NoticeBanner message="Paying with just a face is not switched on yet. Use 'With phone number' or the QR code." />
+          ) : null}
           <Text style={styles.instruction}>
             <Text style={styles.instructionBold}>JUST A FACE:</Text> capture the customer's face and the
-            payment is taken from their Vireo wallet. No phone number needed. Larger orders are paid with the QR code.
+            payment is taken from their Vireo wallet. No phone number needed.
+            {faceOnly.available ? ` Works for orders up to ${formatMoney(faceOnly.maxAmount)}; larger orders are paid with the QR code.` : ''}
           </Text>
           <Button
             title="Capture face & pay"
-            disabled={!available}
+            disabled={!available || !faceOnly.available}
             onPress={startCapture}
           />
         </>
