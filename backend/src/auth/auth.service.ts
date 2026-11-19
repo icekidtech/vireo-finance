@@ -14,6 +14,7 @@ import { DataSource, IsNull, Repository } from 'typeorm';
 import { AccountsService } from '../accounts/accounts.service';
 import { PagaService } from '../paga/paga.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailNotificationProvider } from '../notifications/providers/email.provider';
 import { hmacSha256Hex } from '../common/crypto';
 import {
   DevicePlatform,
@@ -25,6 +26,7 @@ import {
 import { User } from '../users/user.entity';
 import { Device } from './device.entity';
 import { PhoneOtp } from './phone-otp.entity';
+import { EmailOtp } from './email-otp.entity';
 import { LoginDto, RegisterDeviceDto, RegisterDto } from './dto/auth.dto';
 import { AppleAttestService } from './attestation/apple-attest.service';
 import { GooglePlayIntegrityService } from './attestation/google-play-integrity.service';
@@ -40,9 +42,11 @@ export class AuthService {
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Device) private readonly devices: Repository<Device>,
     @InjectRepository(PhoneOtp) private readonly otps: Repository<PhoneOtp>,
+    @InjectRepository(EmailOtp) private readonly emailOtps: Repository<EmailOtp>,
     private readonly accounts: AccountsService,
     private readonly paga: PagaService,
     private readonly notifications: NotificationsService,
+    private readonly emailProvider: EmailNotificationProvider,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly appleAttest: AppleAttestService,
@@ -228,6 +232,85 @@ export class AuthService {
     }
 
     return { accessToken: this.issueToken(user.id), user: toPublicUser(user) };
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Email OTP: Passwordless login via email verification code            */
+  /* ------------------------------------------------------------------ */
+
+  async requestEmailOtp(emailInput: string) {
+    const email = emailInput.trim().toLowerCase();
+    const user = await this.users.findOne({ where: { email } });
+    if (!user) {
+      throw new NotFoundException('No account found with this email');
+    }
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('Account is not active');
+    }
+
+    const code = randomInt(100000, 1000000).toString();
+    const ttl = this.config.get<number>('otp.ttlSeconds') ?? 300;
+    await this.emailOtps.save(
+      this.emailOtps.create({
+        email,
+        codeHash: this.hashEmailOtp(email, code),
+        expiresAt: new Date(Date.now() + ttl * 1000),
+      }),
+    );
+
+    // Send via Resend
+    try {
+      await this.emailProvider.sendVerificationCode(email, code);
+    } catch (error) {
+      this.logger.error(`Failed to send email OTP to ${email}: ${String(error)}`);
+      throw new BadRequestException('Could not send verification email');
+    }
+
+    // Log code in development
+    if (this.config.get<boolean>('otp.logCode')) {
+      this.logger.warn(`📧 Email OTP for ${email}: ${code} (expires in ${ttl}s)`);
+    }
+
+    return { expiresIn: ttl };
+  }
+
+  async verifyEmailOtp(emailInput: string, code: string) {
+    const email = emailInput.trim().toLowerCase();
+    await this.consumeEmailOtp(email, code);
+
+    const user = await this.users.findOne({ where: { email } });
+    if (!user) {
+      throw new NotFoundException('No account found with this email');
+    }
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('Account is not active');
+    }
+
+    return { accessToken: this.issueToken(user.id), user: toPublicUser(user) };
+  }
+
+  private async consumeEmailOtp(email: string, code: string): Promise<void> {
+    const otp = await this.emailOtps.findOne({
+      where: { email, consumedAt: IsNull() },
+      order: { createdAt: 'DESC' },
+    });
+    if (!otp || otp.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('Verification code is invalid or expired');
+    }
+    if (otp.attempts >= MAX_OTP_ATTEMPTS) {
+      throw new BadRequestException('Too many attempts. Request a new code.');
+    }
+    if (otp.codeHash !== this.hashEmailOtp(email, code)) {
+      otp.attempts += 1;
+      await this.emailOtps.save(otp);
+      throw new BadRequestException('Verification code is invalid or expired');
+    }
+    otp.consumedAt = new Date();
+    await this.emailOtps.save(otp);
+  }
+
+  private hashEmailOtp(email: string, code: string): string {
+    return hmacSha256Hex(this.config.get<string>('jwt.secret') ?? '', `email-otp:${email}:${code}`);
   }
 
   /* ------------------------------------------------------------------ */

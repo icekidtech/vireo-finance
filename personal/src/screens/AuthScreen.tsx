@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { StackScreenProps } from '@react-navigation/stack';
 import type { RootStackParamList } from '../navigation';
-import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import { errorMessage } from '../lib/format';
@@ -11,6 +11,7 @@ import PinSetup from '../components/PinSetup';
 import { colors, spacing, type } from '../theme';
 
 type Stage = 'welcome' | 'details' | 'otp' | 'pin';
+type AuthMethod = 'phone' | 'email';
 
 export default function AuthScreen({ navigation, route }: StackScreenProps<RootStackParamList, 'Auth'>) {
   const { login } = useAuth();
@@ -19,8 +20,10 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
   const mode = route.params?.mode;
   const [stage, setStage] = useState<Stage>(mode ? 'details' : 'welcome');
   const [isSignIn, setIsSignIn] = useState(mode === 'signin');
+  const [authMethod, setAuthMethod] = useState<AuthMethod>('phone');
   const [session, setSession] = useState<{ token: string; user: Parameters<typeof login>[1] } | null>(null);
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [handle, setHandle] = useState('');
@@ -41,14 +44,18 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
   };
 
   const sendCode = async () => {
-    await api.requestOtp(phone.trim());
+    if (authMethod === 'email') {
+      await api.requestEmailOtp(email.trim().toLowerCase());
+    } else {
+      await api.requestOtp(phone.trim());
+    }
     setStage('otp');
   };
 
   const onContinue = () =>
     guard(async () => {
       if (!isSignIn) {
-        // Registration creates the account only; the OTP proves phone ownership.
+        // Registration creates the account only; the OTP proves phone/email ownership.
         await api.register(phone.trim(), `${firstName.trim()} ${lastName.trim()}`, handle.trim().replace(/^[@$]/, '') || undefined);
       }
       await sendCode();
@@ -56,7 +63,9 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
 
   const onVerify = () =>
     guard(async () => {
-      const data = await api.verifyOtp(phone.trim(), code.trim());
+      const data = authMethod === 'email'
+        ? await api.verifyEmailOtp(email.trim().toLowerCase(), code.trim())
+        : await api.verifyOtp(phone.trim(), code.trim());
       if (isSignIn) {
         login(data.accessToken, data.user);
         return;
@@ -115,7 +124,30 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
           {stage === 'details' && (
             <>
               <Text style={styles.title}>{isSignIn ? 'Welcome back' : 'Create your account'}</Text>
-              <Field label="PHONE" placeholder="+2348012345678" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoCapitalize="none" />
+              
+              {isSignIn && (
+                <View style={styles.methodSelector}>
+                  <TouchableOpacity
+                    style={[styles.methodButton, authMethod === 'phone' && styles.methodButtonActive]}
+                    onPress={() => setAuthMethod('phone')}
+                  >
+                    <Text style={[styles.methodText, authMethod === 'phone' && styles.methodTextActive]}>Phone</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.methodButton, authMethod === 'email' && styles.methodButtonActive]}
+                    onPress={() => setAuthMethod('email')}
+                  >
+                    <Text style={[styles.methodText, authMethod === 'email' && styles.methodTextActive]}>Email</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {authMethod === 'phone' ? (
+                <Field label="PHONE" placeholder="+2348012345678" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoCapitalize="none" />
+              ) : (
+                <Field label="EMAIL" placeholder="ada@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
+              )}
+
               {!isSignIn && (
                 <>
                   <Field label="FIRST NAME" placeholder="Ada" value={firstName} onChangeText={setFirstName} autoCapitalize="words" autoComplete="given-name" hint="Use your name as it appears on your BVN, so verification is quick." />
@@ -126,7 +158,11 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
               <Button
                 title={isSignIn ? 'Send code' : 'Continue'}
                 loading={loading}
-                disabled={!phone.trim() || (!isSignIn && (!firstName.trim() || !lastName.trim()))}
+                disabled={
+                  (authMethod === 'phone' && !phone.trim()) ||
+                  (authMethod === 'email' && !email.trim()) ||
+                  (!isSignIn && (!firstName.trim() || !lastName.trim()))
+                }
                 onPress={onContinue}
               />
             </>
@@ -143,7 +179,7 @@ export default function AuthScreen({ navigation, route }: StackScreenProps<RootS
           {stage === 'otp' && (
             <>
               <Text style={styles.title}>Enter the code</Text>
-              <Text style={styles.sub}>Sent to {phone}</Text>
+              <Text style={styles.sub}>Sent to {authMethod === 'email' ? email : phone}</Text>
               <Field label="6-DIGIT CODE" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} />
               <Button title="Verify" loading={loading} disabled={code.length !== 6} onPress={onVerify} />
               <Button title="Resend code" variant="ghost" onPress={() => guard(sendCode, 'Could not resend')} />
@@ -161,4 +197,31 @@ const styles = StyleSheet.create({
   back: { fontSize: 38, lineHeight: 40, color: colors.text, marginBottom: spacing.lg },
   title: { ...type.title, marginBottom: spacing.xl, color: colors.text },
   sub: { ...type.body, color: colors.textMuted, marginTop: -spacing.lg, marginBottom: spacing.xl },
+  methodSelector: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  methodButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 12,
+    backgroundColor: colors.bg,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  methodButtonActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  methodText: {
+    ...type.body,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  methodTextActive: {
+    color: colors.white,
+  },
 });

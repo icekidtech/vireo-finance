@@ -58,10 +58,24 @@ export class OtpRequestDto {
   phone: string;
 }
 
+export class EmailOtpRequestDto {
+  @IsEmail()
+  email: string;
+}
+
 export class OtpVerifyDto {
   @IsString()
   @Matches(PHONE_PATTERN)
   phone: string;
+
+  @IsString()
+  @Length(6, 6)
+  code: string;
+}
+
+export class EmailOtpVerifyDto {
+  @IsEmail()
+  email: string;
 
   @IsString()
   @Length(6, 6)
