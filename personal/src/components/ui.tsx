@@ -168,7 +168,7 @@ export function Screen({
     <View style={[styles.fill, styles.column, padded && styles.padded]}>{body}</View>
   );
   return (
-    <SafeAreaView style={[styles.fill, { backgroundColor: background }]} edges={edges}>
+    <SafeAreaView style={[styles.fill, { backgroundColor: background, overflow: 'hidden' }]} edges={edges}>
       {background === colors.bg && (
         <>
           <Glow size={760} intensity={0.035} pulse style={{ top: -380, alignSelf: 'center', left: '50%', marginLeft: -380 }} />

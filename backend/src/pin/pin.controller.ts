@@ -46,7 +46,14 @@ export class PinController {
     await this.pins.set(user.userId, dto.pin, dto.currentPin);
   }
 
-  /** Forgotten PIN: prove phone ownership with a one-time code (request it with POST /auth/otp/request), then choose a new one. */
+  /** Forgotten PIN, step 1: email a one-time code to the signed-in user. Nothing is ever sent to a phone. */
+  @Post('reset/code')
+  @HttpCode(200)
+  async resetCode(@CurrentUser() user: AuthenticatedUser) {
+    return this.auth.sendCodeToUser(user.userId);
+  }
+
+  /** Forgotten PIN, step 2: prove email ownership with that code, then choose a new PIN. */
   @Post('reset')
   @HttpCode(204)
   async reset(@CurrentUser() user: AuthenticatedUser, @Body() dto: ResetPinDto) {

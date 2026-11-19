@@ -65,26 +65,34 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
       if (!photo?.base64) throw new Error('Could not read the camera image');
 
       if (mode === 'deviceless') {
-        // NEW: 1:N face search - no identifier needed!
+        // 1:N face search: no identifier needed. This only IDENTIFIES the customer. Taking payment
+        // by face is not available yet, so a match is reported as "recognised", never as "paid".
         const identification = await api.identifyByFace({
           sampleBase64: photo.base64,
-          amountMinor: amount,
+          amountMinor: Math.round(Number(amount) * 100),
           metadata: {
             orderReference,
             terminalType: 'merchant_app',
           },
         });
 
-        // Map identification result to TerminalPaymentResult format
-        const outcome: TerminalPaymentResult = {
-          status: identification.decision === 'APPROVED' ? 'paid' :
-                  identification.decision === 'STEP_UP' ? 'step_up_required' : 'denied',
-          message: identification.decision === 'APPROVED' ? 'Payment approved' :
-                   identification.decision === 'STEP_UP' ? 'Additional verification required (high-value or low confidence)' :
-                   identification.reason || 'Face not recognized. Customer may not be enrolled.',
-          userId: identification.userId,
-          scores: identification.scores,
-        };
+        const outcome: TerminalPaymentResult =
+          identification.decision === 'APPROVED'
+            ? {
+                status: 'identified',
+                message:
+                  'Customer recognised. No payment was taken: charging by face is not available yet, so ask them to pay with the QR code.',
+              }
+            : identification.decision === 'STEP_UP'
+              ? {
+                  status: 'step_up_required',
+                  message: 'Additional verification is required for this customer or amount.',
+                  orderReference,
+                }
+              : {
+                  status: 'denied',
+                  message: identification.reason || 'Face not recognised. The customer may not be enrolled.',
+                };
 
         setResult(outcome);
         setStage('result');
@@ -116,7 +124,7 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
           <Text style={styles.cameraTitle}>{formatMoney(amount)}</Text>
           <View />
           <Text style={styles.cameraHint}>Ask the customer to look at the camera</Text>
-          <Button title="Capture & pay" variant="accent" loading={busy} onPress={captureAndPay} style={{ alignSelf: 'stretch' }} />
+          <Button title={mode === 'deviceless' ? 'Capture & identify' : 'Capture & pay'} variant="accent" loading={busy} onPress={captureAndPay} style={{ alignSelf: 'stretch' }} />
           <Button title="Cancel" variant="ghost" onPress={() => setStage('identify')} />
         </View>
       </View>
@@ -132,7 +140,7 @@ export default function BiometricPaymentScreen({ navigation, route }: Props) {
             <Text style={[styles.badgeText, paid && { color: colors.accent }]}>{paid ? '✓' : '!'}</Text>
           </Pop>
           <Text style={styles.resultTitle}>
-            {paid ? 'Payment received' : result.status === 'denied' ? 'Not verified' : 'Customer approval needed'}
+            {paid ? 'Payment received' : result.status === 'denied' ? 'Not verified' : result.status === 'identified' ? 'Customer recognised' : 'Customer approval needed'}
           </Text>
           {paid ? <BigMoney amount={amount} color={colors.black} /> : <Text style={styles.resultBody}>{result.message}</Text>}
         </View>

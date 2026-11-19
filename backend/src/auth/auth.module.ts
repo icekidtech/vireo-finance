@@ -11,12 +11,11 @@ import { AuthService } from './auth.service';
 import { AppleAttestService } from './attestation/apple-attest.service';
 import { GooglePlayIntegrityService } from './attestation/google-play-integrity.service';
 import { Device } from './device.entity';
-import { PhoneOtp } from './phone-otp.entity';
 import { EmailOtp } from './email-otp.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Device, PhoneOtp, EmailOtp]),
+    TypeOrmModule.forFeature([User, Device, EmailOtp]),
     JwtModule.registerAsync({
       global: true,
       imports: [ConfigModule],

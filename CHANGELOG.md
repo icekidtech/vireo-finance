@@ -10,6 +10,20 @@ Versions `0.1.0` to `0.3.0` were cut retroactively from the commit history of th
 
 ### Added
 - `README.md`, this changelog and a `LICENSE` stating that the codebase is the property of Vireo Finance.
+- Email sign-in codes for both apps, with the PIN-reset code also sent by email (`POST /pin/reset/code`). Codes can be requested once every 30 seconds per email.
+- Tests for the email-code login, the PIN-reset code and registration.
+
+### Changed
+- Sign-up in both apps now asks for first name, last name, email and phone; sign-in asks for the email only. Phone numbers are saved on the profile and never receive a code.
+- `POST /auth/register` requires an `email` and a `phone` (a password is optional). A phone number already used by another account is refused.
+
+### Removed
+- Phone one-time-code login (`POST /auth/otp/request` and `/auth/otp/verify`), because codes now go to email only.
+
+### Fixed
+- Mobile layout: decorative glows behind every screen made the page scroll sideways on phones. The screen frame now clips them (both apps).
+- Merchant "Pay with face": a recognised face was reported as "Payment received" although nothing is charged. It now says the customer was recognised and no payment was taken.
+- The CI test suite failed after the email-code login was added, because its test setup lacked the new dependencies.
 
 ## [0.3.0] - 2026-11-18
 

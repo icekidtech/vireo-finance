@@ -41,7 +41,7 @@ export default function PinScreen({ navigation }: Props) {
     setBusy(true);
     setPinError(null);
     try {
-      await api.requestOtp(user!.phone);
+      await api.requestPinResetCode();
       setStage('reset-code');
     } catch (e) {
       setPinError(errorMessage(e, 'Could not send a code'));
@@ -68,7 +68,7 @@ export default function PinScreen({ navigation }: Props) {
     if (stage === 'reset-code') {
       return (
         <View>
-          <Text style={styles.lead}>Enter the 6-digit code we sent to {user?.phone}.</Text>
+          <Text style={styles.lead}>Enter the 6-digit code we emailed to {user?.email ?? 'you'}.</Text>
           <Field label="6-DIGIT CODE" value={code} onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))} keyboardType="number-pad" maxLength={6} />
           <Button title="Continue" variant="accent" disabled={code.length !== 6} onPress={() => setStage('reset-new')} />
         </View>

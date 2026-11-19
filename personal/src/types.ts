@@ -7,6 +7,7 @@ export type KycStatus = 'pending' | 'verified' | 'rejected';
 export interface PublicUser {
   id: string;
   phone: string;
+  email?: string | null;
   handle: string | null;
   name: string;
   kycTier: number;

@@ -41,6 +41,7 @@ This is the current feature set. For what shipped in each version, see the [chan
 - AI assistant that checks balances, shows activity, explains fees, shows your deposit account and prepares bank transfers. It resolves banks and recipients on the server.
 - Payment approval with device biometrics (Ed25519 device key) or a transaction PIN, always checked on the server.
 - Transfers to other Vireo users are settled internally; transfers to other banks go through Paga.
+- Sign-in with a 6-digit code emailed to you (no passwords, no SMS). The phone number is saved on your profile only.
 - Tiered KYC (BVN, then NIN and ID, then proof of address) with balance limits that rise with each tier.
 - Activity feed, receipts, in-app notifications.
 
@@ -134,7 +135,7 @@ The server starts with either Didit key type and logs the mode at startup:
 - `Didit mode: LIVE` — identity and face checks are real.
 - `Didit mode: SANDBOX` — Didit approves every check, so verification proves nothing. Use it for demos and testing with test money only.
 
-Other switches that write sensitive data to the logs (`OTP_LOG_CODE`, `LOG_HTTP_BODIES`, `LOG_LLM_PAYLOADS`) are allowed, and each one that is on produces a warning at startup. Turn them off once SMS delivery exists and you no longer need them.
+Other switches that write sensitive data to the logs (`OTP_LOG_CODE`, `LOG_HTTP_BODIES`, `LOG_LLM_PAYLOADS`) are allowed, and each one that is on produces a warning at startup. Turn them off once you no longer need to read sign-in codes or request details in the logs.
 
 ## Testing
 

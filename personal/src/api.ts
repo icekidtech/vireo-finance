@@ -72,18 +72,15 @@ export class VireoApi {
 
   /* ── Auth ── */
 
-  async register(phone: string, name: string, handle?: string) {
-    const { data } = await this.client.post('/auth/register', { phone, name, handle });
+  /** Creates the account. Sign-in codes go to the email; the phone is only saved on the profile. */
+  async register(input: { email: string; phone: string; name: string; handle?: string }) {
+    const { data } = await this.client.post('/auth/register', input);
     return data as { user: PublicUser; created: boolean };
   }
 
-  async requestOtp(phone: string) {
-    const { data } = await this.client.post<OtpRequestResult>('/auth/otp/request', { phone });
-    return data;
-  }
-
-  async verifyOtp(phone: string, code: string) {
-    const { data } = await this.client.post<VerifyOtpResult>('/auth/otp/verify', { phone, code });
+  /** Forgotten PIN: emails a one-time code to the signed-in user. */
+  async requestPinResetCode() {
+    const { data } = await this.client.post<OtpRequestResult>('/pin/reset/code');
     return data;
   }
 
@@ -211,7 +208,7 @@ export class VireoApi {
     await this.client.post('/pin', { pin, ...(currentPin ? { currentPin } : {}) });
   }
 
-  /** Forgotten PIN: needs a fresh SMS code (request it with requestOtp). */
+  /** Forgotten PIN: needs a fresh code emailed to you (request it with requestPinResetCode). */
   async resetPin(code: string, pin: string) {
     await this.client.post('/pin/reset', { code, pin });
   }
