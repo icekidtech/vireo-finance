@@ -57,6 +57,7 @@ function mockRepository<T extends object>(_entity: T) {
     find: jest.fn(),
     count: jest.fn(),
     update: jest.fn(),
+    delete: jest.fn(async () => ({ affected: 1 })),
   } as unknown as jest.Mocked<Repository<T>>;
 }
 
@@ -83,6 +84,7 @@ describe('AuthService', () => {
     usersRepo = mockRepository(mockUser);
     devicesRepo = mockRepository(mockDevice);
     emailOtpsRepo = mockRepository({});
+    emailOtpsRepo.save.mockImplementation(async (row: any) => ({ id: 'otp-1', ...row }));
     emailProvider = { sendVerificationCode: jest.fn(async () => undefined) };
     dataSource = mockDataSource(mockUser);
     accountsService = {
@@ -251,6 +253,8 @@ describe('AuthService', () => {
       await expect(service.requestEmailOtp(email)).rejects.toThrow(
         'Could not send verification email',
       );
+      // The unsent code is removed so the user can retry straight away.
+      expect(emailOtpsRepo.delete).toHaveBeenCalledWith({ id: 'otp-1' });
     });
 
     it('issues a token for a valid code and consumes it', async () => {

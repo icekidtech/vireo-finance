@@ -197,7 +197,7 @@ export class AuthService {
 
     const code = randomInt(100000, 1000000).toString();
     const ttl = this.config.get<number>('otp.ttlSeconds') ?? 300;
-    await this.emailOtps.save(
+    const saved = await this.emailOtps.save(
       this.emailOtps.create({
         email,
         codeHash: this.hashEmailOtp(email, code),
@@ -210,6 +210,12 @@ export class AuthService {
       await this.emailProvider.sendVerificationCode(email, code);
     } catch (error) {
       this.logger.error(`Failed to send email OTP to ${email}: ${String(error)}`);
+      // Nothing was delivered, so drop the code: it would only block an immediate retry.
+      try {
+        await this.emailOtps.delete({ id: saved.id });
+      } catch {
+        // Best effort: the cooldown only delays a retry by a few seconds.
+      }
       throw new BadRequestException('Could not send verification email');
     }
 

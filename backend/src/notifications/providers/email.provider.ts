@@ -12,7 +12,7 @@ export class EmailNotificationProvider implements NotificationProvider {
 
   constructor(private readonly config: ConfigService) {
     const apiKey = this.config.get<string>('resend.apiKey');
-    this.fromEmail = this.config.get<string>('resend.fromEmail') ?? 'noreply@vireofinance.com';
+    this.fromEmail = this.config.get<string>('resend.fromEmail') ?? 'noreply@vireofinance.app';
 
     if (apiKey) {
       this.resend = new Resend(apiKey);
@@ -40,13 +40,14 @@ export class EmailNotificationProvider implements NotificationProvider {
     }
 
     try {
-      await this.resend.emails.send({
+      const { error } = await this.resend.emails.send({
         from: this.fromEmail,
         to: emailAddress,
         subject: title,
         text: body,
         html: this.formatHtml(title, body),
       });
+      if (error) throw new Error(`Resend rejected the email: ${error.message}`);
 
       this.logger.log(`Email sent to ${emailAddress}: ${title}`);
     } catch (error) {
@@ -66,13 +67,16 @@ export class EmailNotificationProvider implements NotificationProvider {
     }
 
     try {
-      await this.resend.emails.send({
+      // Resend's client returns { data, error } instead of throwing, so a rejected email
+      // (unverified sender domain, bad key, rate limit) must be turned into an error here.
+      const { error } = await this.resend.emails.send({
         from: this.fromEmail,
         to: email,
         subject: 'Your Vireo verification code',
         text: `Your verification code is: ${code}\n\nThis code will expire in 5 minutes.\n\nIf you didn't request this code, please ignore this email.`,
         html: this.formatVerificationCodeHtml(code),
       });
+      if (error) throw new Error(`Resend rejected the email: ${error.message}`);
 
       this.logger.log(`Verification code sent to ${email}`);
     } catch (error) {
