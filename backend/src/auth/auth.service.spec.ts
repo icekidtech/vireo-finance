@@ -7,6 +7,8 @@ import { AuthService } from './auth.service';
 import { User } from '../users/user.entity';
 import { Device } from './device.entity';
 import { PhoneOtp } from './phone-otp.entity';
+import { EmailOtp } from './email-otp.entity';
+import { EmailNotificationProvider } from '../notifications/providers/email.provider';
 import { AccountsService } from '../accounts/accounts.service';
 import { PagaService } from '../paga/paga.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -71,6 +73,8 @@ describe('AuthService', () => {
   let usersRepo: any;
   let devicesRepo: any;
   let otpsRepo: any;
+  let emailOtpsRepo: any;
+  let emailProvider: any;
   let dataSource: any;
   let accountsService: any;
   let pagaService: any;
@@ -81,6 +85,8 @@ describe('AuthService', () => {
     usersRepo = mockRepository(mockUser);
     devicesRepo = mockRepository(mockDevice);
     otpsRepo = mockRepository({});
+    emailOtpsRepo = mockRepository({});
+    emailProvider = { sendVerificationCode: jest.fn(async () => undefined) };
     dataSource = mockDataSource(mockUser);
     accountsService = {
       createWallet: jest.fn(async () => ({ id: 'wallet-1' })),
@@ -113,6 +119,8 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(User), useValue: usersRepo },
         { provide: getRepositoryToken(Device), useValue: devicesRepo },
         { provide: getRepositoryToken(PhoneOtp), useValue: otpsRepo },
+        { provide: getRepositoryToken(EmailOtp), useValue: emailOtpsRepo },
+        { provide: EmailNotificationProvider, useValue: emailProvider },
         { provide: AccountsService, useValue: accountsService },
         { provide: PagaService, useValue: pagaService },
         { provide: NotificationsService, useValue: { sendWelcome: jest.fn() } },
@@ -263,6 +271,95 @@ describe('AuthService', () => {
       await expect(service.verifyOtp('+2348012345678', '000000')).rejects.toThrow(
         'OTP is invalid or expired',
       );
+    });
+  });
+
+  describe('email one-time code', () => {
+    const email = 'alice@example.com';
+    const emailUser = { ...mockUser, email };
+
+    it('sends the code by email and never returns it', async () => {
+      usersRepo.findOne.mockResolvedValue(emailUser);
+      const result = await service.requestEmailOtp(' Alice@Example.com ');
+      expect(result).toEqual({ expiresIn: 300 });
+      expect(JSON.stringify(result)).not.toMatch(/\d{6}/);
+      expect(emailProvider.sendVerificationCode).toHaveBeenCalledTimes(1);
+      const [to, code] = emailProvider.sendVerificationCode.mock.calls[0];
+      expect(to).toBe(email);
+      expect(code).toMatch(/^\d{6}$/);
+      // Only a hash of the code is stored.
+      const saved = emailOtpsRepo.save.mock.calls[0][0];
+      expect(saved.codeHash).toBe(hmacSha256Hex('test-secret', `email-otp:${email}:${code}`));
+      expect(saved.codeHash).not.toContain(code);
+    });
+
+    it('does not send a code to an unknown email', async () => {
+      usersRepo.findOne.mockResolvedValue(null);
+      await expect(service.requestEmailOtp('nobody@example.com')).rejects.toThrow(
+        'No account found',
+      );
+      expect(emailProvider.sendVerificationCode).not.toHaveBeenCalled();
+    });
+
+    it('fails when the email cannot be sent', async () => {
+      usersRepo.findOne.mockResolvedValue(emailUser);
+      emailProvider.sendVerificationCode.mockRejectedValue(new Error('resend down'));
+      await expect(service.requestEmailOtp(email)).rejects.toThrow(
+        'Could not send verification email',
+      );
+    });
+
+    it('issues a token for a valid code and consumes it', async () => {
+      const code = '123456';
+      const otp = {
+        email,
+        codeHash: hmacSha256Hex('test-secret', `email-otp:${email}:${code}`),
+        expiresAt: new Date(Date.now() + 60_000),
+        attempts: 0,
+        consumedAt: null,
+      };
+      emailOtpsRepo.findOne.mockResolvedValue(otp);
+      usersRepo.findOne.mockResolvedValue(emailUser);
+      const result = await service.verifyEmailOtp(email, code);
+      expect(result.accessToken).toBe('token-123');
+      expect(otp.consumedAt).toBeInstanceOf(Date);
+    });
+
+    it('counts a wrong code and rejects it', async () => {
+      const otp = {
+        email,
+        codeHash: hmacSha256Hex('test-secret', `email-otp:${email}:123456`),
+        expiresAt: new Date(Date.now() + 60_000),
+        attempts: 0,
+        consumedAt: null,
+      };
+      emailOtpsRepo.findOne.mockResolvedValue(otp);
+      await expect(service.verifyEmailOtp(email, '000000')).rejects.toThrow('invalid or expired');
+      expect(otp.attempts).toBe(1);
+      expect(otp.consumedAt).toBeNull();
+    });
+
+    it('locks a code after too many wrong attempts, even with the right code', async () => {
+      const code = '123456';
+      emailOtpsRepo.findOne.mockResolvedValue({
+        email,
+        codeHash: hmacSha256Hex('test-secret', `email-otp:${email}:${code}`),
+        expiresAt: new Date(Date.now() + 60_000),
+        attempts: 5,
+        consumedAt: null,
+      });
+      await expect(service.verifyEmailOtp(email, code)).rejects.toThrow('Too many attempts');
+    });
+
+    it('rejects an expired code', async () => {
+      emailOtpsRepo.findOne.mockResolvedValue({
+        email,
+        codeHash: 'x',
+        expiresAt: new Date(Date.now() - 1000),
+        attempts: 0,
+        consumedAt: null,
+      });
+      await expect(service.verifyEmailOtp(email, '123456')).rejects.toThrow('invalid or expired');
     });
   });
 

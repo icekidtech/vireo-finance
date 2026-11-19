@@ -13,7 +13,7 @@ export class EmailNotificationProvider implements NotificationProvider {
   constructor(private readonly config: ConfigService) {
     const apiKey = this.config.get<string>('resend.apiKey');
     this.fromEmail = this.config.get<string>('resend.fromEmail') ?? 'noreply@vireofinance.com';
-    
+
     if (apiKey) {
       this.resend = new Resend(apiKey);
       this.logger.log('Resend email provider initialized');
@@ -47,7 +47,7 @@ export class EmailNotificationProvider implements NotificationProvider {
         text: body,
         html: this.formatHtml(title, body),
       });
-      
+
       this.logger.log(`Email sent to ${emailAddress}: ${title}`);
     } catch (error) {
       this.logger.error(
@@ -73,7 +73,7 @@ export class EmailNotificationProvider implements NotificationProvider {
         text: `Your verification code is: ${code}\n\nThis code will expire in 5 minutes.\n\nIf you didn't request this code, please ignore this email.`,
         html: this.formatVerificationCodeHtml(code),
       });
-      
+
       this.logger.log(`Verification code sent to ${email}`);
     } catch (error) {
       this.logger.error(
