@@ -4,6 +4,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { api } from '../api';
 import { getDeviceId } from '../lib/deviceKey';
+import { shrinkFaceImage } from '../lib/image';
 import { errorMessage, formatMoney } from '../lib/format';
 import type { RootStackParamList } from '../navigation';
 import { Button, Card, ErrorBanner, Header, Screen } from '../components/ui';
@@ -68,7 +69,8 @@ export default function BiometricEnrollScreen({ navigation }: Props) {
     try {
       const photo = await camera.current.takePictureAsync({ base64: true, quality: 0.5, skipProcessing: true });
       if (!photo?.base64) throw new Error('Could not read the camera image');
-      await api.enrollBiometric('face', photo.base64, consentId);
+      // A full-size webcam frame can take over a minute to upload on a weak connection.
+      await api.enrollBiometric('face', await shrinkFaceImage(photo.base64), consentId);
       setStage('done');
     } catch (e) {
       setError(errorMessage(e, 'Enrollment failed. Try again in better light.'));

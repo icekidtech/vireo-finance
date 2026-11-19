@@ -322,7 +322,7 @@ export class VireoApi {
       type,
       sampleBase64,
       consentId,
-    });
+    }, { timeout: 60_000 });
     return data;
   }
 
