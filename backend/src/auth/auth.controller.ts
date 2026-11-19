@@ -3,6 +3,8 @@ import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-use
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AuthService } from './auth.service';
 import {
+  EmailOtpRequestDto,
+  EmailOtpVerifyDto,
   LoginDto,
   OtpRequestDto,
   OtpVerifyDto,
@@ -32,6 +34,16 @@ export class AuthController {
   @Post('otp/verify')
   verifyOtp(@Body() dto: OtpVerifyDto) {
     return this.auth.verifyOtp(dto.phone, dto.code);
+  }
+
+  @Post('email-otp/request')
+  requestEmailOtp(@Body() dto: EmailOtpRequestDto) {
+    return this.auth.requestEmailOtp(dto.email);
+  }
+
+  @Post('email-otp/verify')
+  verifyEmailOtp(@Body() dto: EmailOtpVerifyDto) {
+    return this.auth.verifyEmailOtp(dto.email, dto.code);
   }
 
   @UseGuards(JwtAuthGuard)

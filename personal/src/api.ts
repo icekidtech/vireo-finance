@@ -87,6 +87,16 @@ export class VireoApi {
     return data;
   }
 
+  async requestEmailOtp(email: string) {
+    const { data } = await this.client.post<OtpRequestResult>('/auth/email-otp/request', { email });
+    return data;
+  }
+
+  async verifyEmailOtp(email: string, code: string) {
+    const { data } = await this.client.post<VerifyOtpResult>('/auth/email-otp/verify', { email, code });
+    return data;
+  }
+
   async getProfile() {
     const { data } = await this.client.get<PublicUser>('/auth/me');
     return data;

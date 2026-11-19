@@ -33,6 +33,7 @@ export interface IdentityVerifier {
     lastName: string;
     dateOfBirth: string;
     selfie: Buffer;
+    userId?: string; // Optional: For deviceless payments (1:N face search)
   }): Promise<boolean>;
   /** Tier 2: NIN record matches the name and date of birth. */
   verifyNin(input: {

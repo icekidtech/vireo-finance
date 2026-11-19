@@ -106,6 +106,10 @@ export interface AppConfig {
       enabled?: boolean;
     };
   };
+  resend: {
+    apiKey: string;
+    fromEmail: string;
+  };
 }
 
 const int = (value: string | undefined, fallback: number): number => {
@@ -236,5 +240,9 @@ export default (): AppConfig => ({
     push: {
       enabled: bool(process.env.NOTIFICATIONS_PUSH_ENABLED, false),
     },
+  },
+  resend: {
+    apiKey: process.env.RESEND_API_KEY ?? '',
+    fromEmail: process.env.RESEND_FROM_EMAIL ?? 'noreply@vireofinance.com',
   },
 });

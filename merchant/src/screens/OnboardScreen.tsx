@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { StackScreenProps } from '@react-navigation/stack';
 import type { RootStackParamList } from '../navigation';
-import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions, TouchableOpacity } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import { errorMessage } from '../lib/format';
@@ -12,6 +12,7 @@ import PinSetup from '../components/PinSetup';
 import { colors, spacing, type } from '../theme';
 
 type Stage = 'welcome' | 'account' | 'otp' | 'business' | 'pin';
+type AuthMethod = 'phone' | 'email';
 
 export default function OnboardScreen({ navigation, route }: StackScreenProps<RootStackParamList, 'Onboard'>) {
   const { login } = useAuth();
@@ -20,7 +21,9 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
   const mode = route.params?.mode;
   const [stage, setStage] = useState<Stage>(mode ? 'account' : 'welcome');
   const [isSignIn, setIsSignIn] = useState(mode === 'signin');
+  const [authMethod, setAuthMethod] = useState<AuthMethod>('phone');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [code, setCode] = useState('');
@@ -45,13 +48,17 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
   };
 
   const sendCode = async () => {
-    await api.requestOtp(phone.trim());
+    if (authMethod === 'email') {
+      await api.requestEmailOtp(email.trim().toLowerCase());
+    } else {
+      await api.requestOtp(phone.trim());
+    }
     setStage('otp');
   };
 
   const onRegister = () =>
     guard(async () => {
-      // Registration creates the account only; the OTP proves phone ownership.
+      // Registration creates the account only; the OTP proves phone/email ownership.
       await api.register(phone.trim(), `${firstName.trim()} ${lastName.trim()}`);
       await sendCode();
     }, 'Could not create your account');
@@ -60,7 +67,9 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
 
   const onVerify = () =>
     guard(async () => {
-      const data = await api.verifyOtp(phone.trim(), code.trim());
+      const data = authMethod === 'email'
+        ? await api.verifyEmailOtp(email.trim().toLowerCase(), code.trim())
+        : await api.verifyOtp(phone.trim(), code.trim());
       api.setToken(data.accessToken);
       // Returning merchants go straight in. A user with no merchant profile
       // (new, or registered but never finished setup) continues to business setup.
@@ -142,7 +151,30 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
           {stage === 'account' && (
             <>
               <Text style={styles.title}>{isSignIn ? 'Welcome back' : 'Your details'}</Text>
-              <Field label="PHONE" placeholder="+2348012345678" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoCapitalize="none" />
+              
+              {isSignIn && (
+                <View style={styles.methodSelector}>
+                  <TouchableOpacity
+                    style={[styles.methodButton, authMethod === 'phone' && styles.methodButtonActive]}
+                    onPress={() => setAuthMethod('phone')}
+                  >
+                    <Text style={[styles.methodText, authMethod === 'phone' && styles.methodTextActive]}>Phone</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.methodButton, authMethod === 'email' && styles.methodButtonActive]}
+                    onPress={() => setAuthMethod('email')}
+                  >
+                    <Text style={[styles.methodText, authMethod === 'email' && styles.methodTextActive]}>Email</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {authMethod === 'phone' ? (
+                <Field label="PHONE" placeholder="+2348012345678" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoCapitalize="none" />
+              ) : (
+                <Field label="EMAIL" placeholder="ada@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
+              )}
+
               {!isSignIn && (
                 <>
                   <Field label="FIRST NAME" placeholder="Ada" value={firstName} onChangeText={setFirstName} autoCapitalize="words" autoComplete="given-name" hint="Use your name as it appears on your BVN, so verification is quick." />
@@ -152,7 +184,11 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
               <Button
                 title={isSignIn ? 'Send code' : 'Continue'}
                 loading={loading}
-                disabled={!phone.trim() || (!isSignIn && (!firstName.trim() || !lastName.trim()))}
+                disabled={
+                  (authMethod === 'phone' && !phone.trim()) ||
+                  (authMethod === 'email' && !email.trim()) ||
+                  (!isSignIn && (!firstName.trim() || !lastName.trim()))
+                }
                 onPress={isSignIn ? onSignIn : onRegister}
               />
             </>
@@ -161,7 +197,7 @@ export default function OnboardScreen({ navigation, route }: StackScreenProps<Ro
           {stage === 'otp' && (
             <>
               <Text style={styles.title}>Enter the code</Text>
-              <Text style={styles.sub}>Sent to {phone}</Text>
+              <Text style={styles.sub}>Sent to {authMethod === 'email' ? email : phone}</Text>
               <Field label="6-DIGIT CODE" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} />
               <Button title="Verify" loading={loading} disabled={code.length !== 6} onPress={onVerify} />
               <Button title="Resend code" variant="ghost" onPress={() => guard(sendCode, 'Could not resend')} />
@@ -199,4 +235,31 @@ const styles = StyleSheet.create({
   title: { ...type.title, marginBottom: spacing.xl, color: colors.text },
   sub: { ...type.body, color: colors.textMuted, marginTop: -spacing.lg, marginBottom: spacing.xl },
   section: { ...type.heading, marginTop: spacing.md, marginBottom: spacing.lg, color: colors.text },
+  methodSelector: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  methodButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 12,
+    backgroundColor: colors.bg,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  methodButtonActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  methodText: {
+    ...type.body,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  methodTextActive: {
+    color: colors.white,
+  },
 });
