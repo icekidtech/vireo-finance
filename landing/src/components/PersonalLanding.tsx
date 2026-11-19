@@ -30,7 +30,7 @@ export default function PersonalLanding({ onSwitch }: Props) {
 
   const visibleBottom = scrollY + viewport
 
-  const PERSONAL_APP_URL = 'https://vireo-personal.vercel.app'
+  const PERSONAL_APP_URL = 'https://www.personal.vireofinance.app'
 
   const content = {
     headline: { before: 'Money that', highlight: 'responds', after: 'to you.' },

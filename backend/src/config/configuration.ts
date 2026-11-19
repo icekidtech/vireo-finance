@@ -28,6 +28,9 @@ export interface AppConfig {
   redis: {
     host: string;
     port: number;
+    username: string;
+    password: string;
+    tls: boolean;
   };
   paga: {
     businessBaseUrl: string;
@@ -147,6 +150,9 @@ export default (): AppConfig => ({
   redis: {
     host: process.env.REDIS_HOST ?? 'localhost',
     port: int(process.env.REDIS_PORT, 6379),
+    username: (process.env.REDIS_USERNAME ?? '').trim(),
+    password: process.env.REDIS_PASSWORD ?? '',
+    tls: process.env.REDIS_TLS === 'true' || process.env.REDIS_TLS === '1',
   },
   paga: {
     businessBaseUrl: process.env.PAGA_BUSINESS_BASE_URL ?? '',

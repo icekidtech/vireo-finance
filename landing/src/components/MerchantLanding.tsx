@@ -30,7 +30,7 @@ export default function MerchantLanding({ onSwitch }: Props) {
 
   const visibleBottom = scrollY + viewport
 
-  const MERCHANT_APP_URL = 'https://vireo-merchant.vercel.app'
+  const MERCHANT_APP_URL = 'https://www.merchant.vireofinance.app'
 
   const content = {
     headline: { before: 'Get paid the way', highlight: 'your customers', after: 'pay.' },
