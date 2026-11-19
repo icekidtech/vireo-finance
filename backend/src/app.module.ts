@@ -36,6 +36,10 @@ import { WebhooksModule } from './webhooks/webhooks.module';
         connection: {
           host: config.get<string>('redis.host') ?? 'localhost',
           port: config.get<number>('redis.port') ?? 6379,
+          // Hosted Redis (e.g. Redis Cloud) needs a user, a password and sometimes TLS.
+          username: config.get<string>('redis.username') || undefined,
+          password: config.get<string>('redis.password') || undefined,
+          tls: config.get<boolean>('redis.tls') ? {} : undefined,
         },
       }),
     }),
