@@ -26,6 +26,21 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # A throwaway database, so the migrations are run for real before anything is deployed.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: vireo
+          POSTGRES_PASSWORD: vireo
+          POSTGRES_DB: vireo_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vireo -d vireo_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
 
@@ -44,6 +59,20 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+
+      # Fails the pipeline, before the deploy job can start, if a migration does not run on a
+      # fresh database or leaves out a column the code queries (a runtime "column does not exist").
+      - name: Migrations apply and match the code
+        env:
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_USER: vireo
+          DB_PASSWORD: vireo
+          DB_NAME: vireo_ci
+          DB_SSL: "false"
+        run: |
+          node node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js
+          pnpm schema:check
 
   deploy:
     name: Deploy to VPS

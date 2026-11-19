@@ -18,7 +18,8 @@
     "test:cov": "jest --coverage --passWithNoTests",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
-    "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts"
+    "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
+    "schema:check": "node scripts/check-schema.js"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.2",
