@@ -87,6 +87,32 @@ export class EmailNotificationProvider implements NotificationProvider {
     }
   }
 
+  /**
+   * Send a custom HTML email
+   */
+  async sendCustomEmail(to: string, subject: string, html: string): Promise<void> {
+    if (!this.resend) {
+      throw new Error('Resend email provider not configured');
+    }
+
+    try {
+      const { error } = await this.resend.emails.send({
+        from: this.fromEmail,
+        to,
+        subject,
+        html,
+      });
+      if (error) throw new Error(`Resend rejected the email: ${error.message}`);
+
+      this.logger.log(`Custom email sent to ${to}: ${subject}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send custom email to ${to}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw error;
+    }
+  }
+
   private formatHtml(title: string, body: string): string {
     return `
 <!DOCTYPE html>

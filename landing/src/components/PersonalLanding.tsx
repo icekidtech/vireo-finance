@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import './Landing.css'
 
-interface Props {
-  onSwitch: () => void
-}
-
-export default function PersonalLanding({ onSwitch }: Props) {
+export default function PersonalLanding() {
   const [scrollY, setScrollY] = useState(0)
   const [viewport, setViewport] = useState(800)
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -83,14 +80,17 @@ export default function PersonalLanding({ onSwitch }: Props) {
         
         <div className="inner">
           <nav className="nav fade-in">
-            <img src="/logo-light.png" alt="Vireo Finance" className="logo-img" />
+            <Link to="/">
+              <img src="/logo-light.png" alt="Vireo Finance" className="logo-img" />
+            </Link>
             <div className="nav-pill">
               <button onClick={() => scrollTo('features')} className="nav-item">Features</button>
               <button onClick={() => scrollTo('steps')} className="nav-item">How it works</button>
               <button onClick={() => scrollTo('security')} className="nav-item">Security</button>
             </div>
             <div className="nav-actions">
-              <button onClick={onSwitch} className="nav-link">Business</button>
+              <Link to="/developers" className="nav-link">Developers</Link>
+              <Link to="/merchant" className="nav-link">Business</Link>
               <a href={PERSONAL_APP_URL} className="btn btn-accent btn-small">{content.primaryCta}</a>
             </div>
           </nav>

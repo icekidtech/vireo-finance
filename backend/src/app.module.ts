@@ -9,6 +9,7 @@ import { AgentModule } from './agent/agent.module';
 import { AuthModule } from './auth/auth.module';
 import { BiometricsModule } from './biometrics/biometrics.module';
 import { ChallengesModule } from './challenges/challenges.module';
+import { DevelopersModule } from './developers/developers.module';
 import { HealthModule } from './health/health.module';
 import { PinModule } from './pin/pin.module';
 import { DocumentsModule } from './documents/documents.module';
@@ -59,6 +60,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     MerchantModule,
     AgentModule,
     BiometricsModule,
+    DevelopersModule,
     WebhooksModule,
     ReconciliationModule,
     QueueModule,
